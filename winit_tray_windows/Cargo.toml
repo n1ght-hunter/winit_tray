@@ -1,0 +1,10 @@
+[package]
+name = "winit_tray_windows"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+winit.workspace = true
+windows-sys.workspace = true
+winit_tray_core.workspace = true

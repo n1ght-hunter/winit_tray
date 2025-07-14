@@ -1,0 +1,37 @@
+[package]
+name = "winit-tray"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit_tray_windows.workspace = true
+winit.workspace = true
+winit_tray_core.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+
+
+[dev-dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+
+[workspace]
+resolver = "3"
+members = ["winit_tray_core", "winit_tray_windows"]
+
+[workspace.dependencies]
+winit_tray_windows = { path = "winit_tray_windows" }
+winit_tray_core = { path = "winit_tray_core" }
+
+anyhow = "1.0.98"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"] }
+
+
+winit-win32 = { git = "https://github.com/rust-windowing/winit.git", rev = "e7a6034" }
+winit = { git = "https://github.com/rust-windowing/winit.git", rev = "e7a6034" }
+
+windows-sys = "0.59.0"
