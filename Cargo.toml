@@ -33,5 +33,6 @@ rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"] }
 
 winit-win32 = { git = "https://github.com/rust-windowing/winit.git", rev = "e7a6034" }
 winit = { git = "https://github.com/rust-windowing/winit.git", rev = "e7a6034" }
+winit-core = { git = "https://github.com/rust-windowing/winit.git", rev = "e7a6034" }
 
 windows-sys = "0.59.0"

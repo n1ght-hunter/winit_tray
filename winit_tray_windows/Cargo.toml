@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 
 winit.workspace = true
+winit-core.workspace = true
 windows-sys.workspace = true
 winit_tray_core.workspace = true
 anyhow.workspace = true

@@ -41,7 +41,7 @@ impl TrayManager {
     }
 
     pub fn create_tray(&self, attr: TrayAttributes) -> Result<Box<dyn Tray>, anyhow::Error> {
-        let tray = platform_impl::Tray::new(self.callback_proxy.clone(), attr);
+        let tray = platform_impl::Tray::new(self.callback_proxy.clone(), attr)?;
         Ok(Box::new(tray))
     }
 

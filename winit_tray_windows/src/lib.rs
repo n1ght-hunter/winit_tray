@@ -1,16 +1,34 @@
+pub mod msg;
 mod util;
 
-use std::{cell::Cell, ptr};
+use std::{cell::Cell, ffi::OsStr, ptr, rc::Rc};
 
-use anyhow::Context;
 use windows_sys::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, RegisterClassExW, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA, WM_CREATE, WM_NCCREATE, WNDCLASSEXW, WS_OVERLAPPEDWINDOW
+    Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
+    System::LibraryLoader::GetModuleHandleW,
+    UI::{
+        Shell::{
+            NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
+        },
+        WindowsAndMessaging::{
+            CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreatePopupMenu, CreateWindowExW,
+            DefWindowProcW, DestroyWindow, GWL_USERDATA, GetCursorPos, HICON, IDI_APPLICATION,
+            LoadIconW, MENUINFO, MIM_APPLYTOSUBMENUS, MIM_STYLE, MNS_NOTIFYBYPOS, PostMessageW,
+            RegisterClassExW, SetMenuInfo, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+            WM_MBUTTONUP, WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_USER, WM_XBUTTONDOWN,
+            WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW,
+        },
     },
 };
-use winit::raw_window_handle::RawWindowHandle;
+use winit::{
+    dpi::PhysicalPosition,
+    event::{ElementState, MouseButton},
+    raw_window_handle::RawWindowHandle,
+};
 use winit_tray_core::{Tray as CoreTray, TrayAttributes, TrayEvent, TrayProxy};
+
+use crate::msg::DESTROY_MSG_ID;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
@@ -52,6 +70,26 @@ impl Tray {
     pub fn hwnd(&self) -> HWND {
         self.window_handle.hwnd()
     }
+
+    pub fn set_tooltip<S: AsRef<OsStr>>(&self, tooltip: Option<S>) -> Result<(), anyhow::Error> {
+        let mut nid = NOTIFYICONDATAW {
+            uFlags: NIF_TIP,
+            hWnd: self.hwnd(),
+            ..unsafe { std::mem::zeroed() }
+        };
+        if let Some(tooltip) = &tooltip {
+            let tip = util::encode_wide(tooltip.as_ref());
+            #[allow(clippy::manual_memcpy)]
+            for i in 0..tip.len().min(128) {
+                nid.szTip[i] = tip[i];
+            }
+        }
+
+        if unsafe { Shell_NotifyIconW(NIM_MODIFY, &mut nid as _) } == 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        Ok(())
+    }
 }
 
 impl CoreTray for Tray {
@@ -62,17 +100,62 @@ impl CoreTray for Tray {
     }
 }
 
-pub struct InitData {
+impl Drop for Tray {
+    fn drop(&mut self) {
+        unsafe {
+            // The window must be destroyed from the same thread that created it, so we send a
+            // custom message to be handled by our callback to do the actual work.
+            PostMessageW(self.hwnd(), DESTROY_MSG_ID.get(), 0, 0);
+        }
+    }
+}
+
+pub(crate) struct InitData {
     pub attributes: TrayAttributes,
     pub proxy: TrayProxy,
-    pub panic_error: Cell<Option<Box<dyn std::any::Any + Send + 'static>>>,
+    pub runner: Rc<Runner>,
     // outputs
     pub tray: Option<Tray>,
+}
+
+#[derive(Default)]
+pub(crate) struct Runner {
+    pub panic_error: Cell<Option<Box<dyn std::any::Any + Send + 'static>>>,
+}
+
+impl Runner {
+    pub fn catch_unwind<R>(&self, f: impl FnOnce() -> R) -> Option<R> {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+            Ok(result) => Some(result),
+            Err(err) => {
+                self.panic_error.set(Some(err));
+                None
+            }
+        }
+    }
+
+    pub fn take_panic_error(&self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {
+        match self.panic_error.take() {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
 }
 
 struct WindowData {
     pub userdata_removed: Cell<bool>,
     pub recurse_depth: Cell<u32>,
+    pub runner: Rc<Runner>,
+    pub proxy: TrayProxy,
+}
+
+impl WindowData {
+    pub fn send_event(&self, hwnd: HWND, event: TrayEvent) {
+        (self.proxy)(
+            winit_tray_core::tray_id::TrayId::from_raw(hwnd as usize),
+            event,
+        );
+    }
 }
 
 impl InitData {
@@ -83,38 +166,43 @@ impl InitData {
         }
     }
 
-    unsafe fn create_window_data(&self, tray: &Tray) -> WindowData {
+    unsafe fn create_tray_data(&self, tray: &Tray) -> WindowData {
         WindowData {
             userdata_removed: Cell::new(false),
             recurse_depth: Cell::new(0),
+            runner: self.runner.clone(),
+            proxy: self.proxy.clone(),
         }
     }
 
     unsafe fn on_nccreate(&mut self, window: HWND) -> Option<isize> {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let window = unsafe { self.create_window(window) };
-            let window_data = unsafe { self.create_window_data(&window) };
-            (window, window_data)
-        }));
+        let res = self.runner.catch_unwind(|| {
+            let tray = unsafe { self.create_window(window) };
+            let tray_data = unsafe { self.create_tray_data(&tray) };
+            (tray, tray_data)
+        });
 
-        match result {
-            Ok((win, userdata)) => {
-                self.tray = Some(win);
-                let userdata = Box::into_raw(Box::new(userdata));
-                Some(userdata as _)
-            }
-            Err(err) => {
-                self.panic_error.set(Some(err));
-                None
-            }
-        }
+        res.map(|(tray, tray_data)| {
+            self.tray = Some(tray);
+            let userdata = Box::into_raw(Box::new(tray_data));
+            userdata as _
+        })
+    }
+
+    pub unsafe fn on_create(&mut self) {
+        let _tray = self.tray.as_mut().expect("failed window creation");
+        // This is where you can perform additional setup after the window has been created.
+
+        // if let Some(tooltip) = self.attributes.tooltip.as_ref() {
+        //     tray.set_tooltip(Some(tooltip))
+        //         .expect("Failed to set tooltip");
+        // }
     }
 }
 unsafe fn init(
     proxy: TrayProxy,
     attr: winit_tray_core::TrayAttributes,
 ) -> Result<Tray, anyhow::Error> {
-    let title = util::encode_wide(&attr.tooltip);
     let class_name = util::encode_wide(&attr.class_name);
 
     let class = WNDCLASSEXW {
@@ -147,20 +235,28 @@ unsafe fn init(
     let mut initdata = InitData {
         tray: None,
         attributes: attr,
-        panic_error: Cell::new(None),
+        runner: Default::default(),
         proxy,
     };
 
     let handle = unsafe {
         CreateWindowExW(
-            0,
+            WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYERED |
+            // WS_EX_TOOLWINDOW prevents this window from ever showing up in the taskbar, which
+            // we want to avoid. If you remove this style, this window won't show up in the
+            // taskbar *initially*, but it can show up at some later point. This can sometimes
+            // happen on its own after several hours have passed, although this has proven
+            // difficult to reproduce. Alternatively, it can be manually triggered by killing
+            // `explorer.exe` and then starting the process back up.
+            // It is unclear why the bug is triggered by waiting for several hours.
+            WS_EX_TOOLWINDOW,
             class_name.as_ptr(),
-            title.as_ptr(),
-            WS_OVERLAPPEDWINDOW,
+            ptr::null(),
+            WS_OVERLAPPED,
             CW_USEDEFAULT,
+            0,
             CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            0,
             parent_hwnd.unwrap_or(ptr::null_mut()),
             ptr::null_mut(),
             util::get_instance_handle(),
@@ -169,7 +265,7 @@ unsafe fn init(
     };
 
     // If the window creation in `InitData` panicked, then should resume panicking here
-    if let Some(panic_error) = initdata.panic_error.take() {
+    if let Err(panic_error) = initdata.runner.take_panic_error() {
         std::panic::resume_unwind(panic_error)
     }
 
@@ -178,6 +274,54 @@ unsafe fn init(
     }
 
     let tray = initdata.tray.unwrap();
+
+    let icon: HICON = unsafe {
+        let mut handle = LoadIconW(
+            GetModuleHandleW(std::ptr::null()),
+            util::encode_wide("tray-default").as_ptr(),
+        );
+        if handle.is_null() {
+            // Fallback to a default icon if the specified icon could not be loaded
+            handle = LoadIconW(0 as _, IDI_APPLICATION);
+        }
+        if handle.is_null() {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        handle
+    };
+
+    let nid = unsafe {
+        NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: tray.hwnd(),
+            uID: 1,
+            uFlags: NIF_MESSAGE | NIF_ICON,
+            hIcon: icon,
+            uCallbackMessage: WM_USER + 1,
+            ..std::mem::zeroed()
+        }
+    };
+
+    if unsafe { Shell_NotifyIconW(NIM_ADD, &nid) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+
+    // Setup menu
+    let info = unsafe {
+        MENUINFO {
+            cbSize: std::mem::size_of::<MENUINFO>() as u32,
+            fMask: MIM_APPLYTOSUBMENUS | MIM_STYLE,
+            dwStyle: MNS_NOTIFYBYPOS,
+            ..std::mem::zeroed()
+        }
+    };
+    let hmenu = unsafe { CreatePopupMenu() };
+    if hmenu.is_null() {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if unsafe { SetMenuInfo(hmenu, &info) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
 
     Ok(tray)
 }
@@ -193,7 +337,7 @@ unsafe extern "system" fn public_window_callback(
     let userdata_ptr = match (userdata, msg) {
         (0, WM_NCCREATE) => {
             let createstruct = unsafe { &mut *(lparam as *mut CREATESTRUCTW) };
-            let initdata = unsafe { &mut *(createstruct.lpCreateParams as *mut InitData<'_>) };
+            let initdata = unsafe { &mut *(createstruct.lpCreateParams as *mut InitData) };
 
             let result = match unsafe { initdata.on_nccreate(window) } {
                 Some(userdata) => unsafe {
@@ -212,7 +356,6 @@ unsafe extern "system" fn public_window_callback(
             let createstruct = &mut *(lparam as *mut CREATESTRUCTW);
             let initdata = createstruct.lpCreateParams;
             let initdata = &mut *(initdata as *mut InitData);
-
             initdata.on_create();
             return DefWindowProcW(window, msg, wparam, lparam);
         },
@@ -220,5 +363,166 @@ unsafe extern "system" fn public_window_callback(
         _ => userdata as *mut WindowData,
     };
 
-    return 0;
+    let (result, userdata_removed, recurse_depth) = {
+        let userdata = unsafe { &*(userdata_ptr) };
+
+        userdata.recurse_depth.set(userdata.recurse_depth.get() + 1);
+
+        let result = unsafe { public_window_callback_inner(window, msg, wparam, lparam, userdata) };
+
+        let userdata_removed = userdata.userdata_removed.get();
+        let recurse_depth = userdata.recurse_depth.get() - 1;
+        userdata.recurse_depth.set(recurse_depth);
+
+        (result, userdata_removed, recurse_depth)
+    };
+
+    if userdata_removed && recurse_depth == 0 {
+        drop(unsafe { Box::from_raw(userdata_ptr) });
+    }
+
+    return result;
+}
+
+unsafe fn public_window_callback_inner(
+    window: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    userdata: &WindowData,
+) -> LRESULT {
+    let mut result = ProcResult::DefWindowProc(wparam);
+
+    userdata
+        .runner
+        .catch_unwind(|| match msg {
+            1025 if (lparam as u32 == WM_LBUTTONUP
+                || lparam as u32 == WM_RBUTTONUP
+                || lparam as u32 == WM_MBUTTONUP
+                || lparam as u32 == WM_XBUTTONUP
+                || lparam as u32 == WM_LBUTTONDOWN
+                || lparam as u32 == WM_RBUTTONDOWN
+                || lparam as u32 == WM_MBUTTONDOWN
+                || lparam as u32 == WM_XBUTTONDOWN) =>
+            {
+                let mut point = POINT { x: 0, y: 0 };
+                if unsafe { GetCursorPos(&mut point) } == 0 {
+                    result = ProcResult::Value(-1);
+                    return;
+                }
+                let position = PhysicalPosition::new(point.x as f64, point.y as f64);
+
+                match lparam as u32 {
+                    x if x == WM_LBUTTONUP => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Released,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Left),
+                            },
+                        );
+                    }
+                    x if x == WM_RBUTTONUP => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Released,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Right),
+                            },
+                        );
+                    }
+                    x if x == WM_MBUTTONUP => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Released,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Middle),
+                            },
+                        );
+                    }
+                    x if x == WM_XBUTTONUP => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Released,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Other(
+                                    0,
+                                )),
+                            },
+                        );
+                    }
+                    x if x == WM_LBUTTONDOWN => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Pressed,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Left),
+                            },
+                        );
+                    }
+                    x if x == WM_RBUTTONDOWN => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Pressed,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Right),
+                            },
+                        );
+                    }
+                    x if x == WM_MBUTTONDOWN => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Pressed,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Middle),
+                            },
+                        );
+                    }
+                    x if x == WM_XBUTTONDOWN => {
+                        userdata.send_event(
+                            window,
+                            TrayEvent::PointerButton {
+                                state: ElementState::Pressed,
+                                position,
+                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Other(
+                                    0,
+                                )),
+                            },
+                        );
+                    }
+                    _ => unreachable!("Invalid mouse button event"),
+                };
+
+                result = ProcResult::Value(0);
+            }
+
+            _ => {
+                if msg == DESTROY_MSG_ID.get() {
+                    unsafe { DestroyWindow(window) };
+                    result = ProcResult::Value(0);
+                } else {
+                    result = ProcResult::DefWindowProc(wparam);
+                }
+            }
+        })
+        .unwrap_or_else(|| result = ProcResult::Value(-1));
+
+    match result {
+        ProcResult::DefWindowProc(wparam) => unsafe { DefWindowProcW(window, msg, wparam, lparam) },
+        ProcResult::Value(val) => val,
+    }
+}
+
+/// The result of a subclass procedure (the message handling callback)
+#[derive(Clone, Copy)]
+pub(crate) enum ProcResult {
+    DefWindowProc(WPARAM),
+    Value(isize),
 }

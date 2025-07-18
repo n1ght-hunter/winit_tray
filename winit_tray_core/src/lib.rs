@@ -1,14 +1,34 @@
-use winit::icon::Icon;
+use winit::{dpi::PhysicalPosition, event::{ButtonSource, ElementState}, icon::Icon};
 
 pub mod tray_id;
 
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TrayEvent {
-    /// The tray icon was clicked.
-    Click,
-    /// The tray icon was right-clicked.
-    RightClick,
-    /// The tray icon was double-clicked.
-    DoubleClick,
+    PointerButton {
+        state: ElementState,
+
+        /// The position of the pointer when the button was pressed.
+        ///
+        /// ## Platform-specific
+        ///
+        /// - **Orbital: Always emits `(0., 0.)`.
+        /// - **Web:** Doesn't take into account CSS [`border`], [`padding`], or [`transform`].
+        ///
+        /// [`border`]: https://developer.mozilla.org/en-US/docs/Web/CSS/border
+        /// [`padding`]: https://developer.mozilla.org/en-US/docs/Web/CSS/padding
+        /// [`transform`]: https://developer.mozilla.org/en-US/docs/Web/CSS/transform
+        position: PhysicalPosition<f64>,
+
+        // /// Indicates whether the event is created by a primary pointer.
+        // ///
+        // /// A pointer is considered primary when it's a mouse, the first finger in a multi-touch
+        // /// interaction, or an unknown pointer source.
+        // primary: bool,
+
+        button: ButtonSource,
+    },
 }
 
 pub type TrayProxy = std::sync::Arc<dyn Fn(tray_id::TrayId, TrayEvent) + Send + Sync>;
@@ -17,13 +37,9 @@ pub trait Tray: Send + Sync + std::fmt::Debug {
     fn id(&self) -> tray_id::TrayId;
 }
 
-
-/// Run on main thread
-struct Runner {}
-
 #[derive(Debug)]
 pub struct TrayAttributes {
-    pub tooltip: String,
+    pub tooltip: Option<String>,
     pub class_name: String,
     pub icon: Option<Icon>,
     pub(crate) parent_window: Option<SendSyncRawWindowHandle>,
@@ -32,10 +48,10 @@ pub struct TrayAttributes {
 impl Default for TrayAttributes {
     fn default() -> Self {
         TrayAttributes {
-            tooltip: "Winit Tray".to_string(),
+            tooltip: None,
             icon: None,
             parent_window: None,
-            class_name: "Window Class".to_string(),
+            class_name: "Window Tray Class".to_string(),
         }
     }
 }
@@ -43,7 +59,7 @@ impl Default for TrayAttributes {
 impl TrayAttributes {
     /// Set the tooltip for the tray icon.
     pub fn with_tooltip(mut self, title: impl Into<String>) -> Self {
-        self.tooltip = title.into();
+        self.tooltip = Some(title.into());
         self
     }
 
@@ -54,6 +70,8 @@ impl TrayAttributes {
     }
 
     /// Set the class name for the tray window.
+    ///
+    /// WARNING: On Windows if this is the same as another window class name, it will cause issues.
     pub fn with_class_name(mut self, class_name: impl Into<String>) -> Self {
         self.class_name = class_name.into();
         self

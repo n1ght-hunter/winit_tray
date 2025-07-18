@@ -27,6 +27,19 @@ impl App {
 
 impl ApplicationHandler for App {
     fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
+        let tray_attributes =
+            winit_tray_core::TrayAttributes::default().with_tooltip("Winit Tray Example");
+
+        println!("Creating tray with attributes: {:?}", tray_attributes);
+        self.tray = match self.tray_manager.create_tray(tray_attributes) {
+            Ok(tray) => Some(tray),
+            Err(err) => {
+                eprintln!("error creating tray: {err}");
+                event_loop.exit();
+                return;
+            }
+        };
+        println!("Tray created successfully");
         let window_attributes = WindowAttributes::default();
         self.window = match event_loop.create_window(window_attributes) {
             Ok(window) => Some(window),
@@ -36,26 +49,20 @@ impl ApplicationHandler for App {
                 return;
             }
         };
-        let tray_attributes = winit_tray_core::TrayAttributes::default();
-
-        self.tray = match self.tray_manager.create_tray(tray_attributes) {
-            Ok(tray) => Some(tray),
-            Err(err) => {
-                eprintln!("error creating tray: {err}");
-                event_loop.exit();
-                return;
-            }
-        };
     }
 
     fn proxy_wake_up(&mut self, _event_loop: &dyn ActiveEventLoop) {
         while let Ok((_id, event)) = self.tray_manager.try_recv() {
             match event {
-                winit_tray_core::TrayEvent::Click => {
-                    println!("Tray icon clicked");
-                }
-                winit_tray_core::TrayEvent::RightClick => {
-                    println!("Tray icon right-clicked");
+                winit_tray_core::TrayEvent::PointerButton {
+                    state,
+                    position,
+                    button,
+                } => {
+                    println!(
+                        "Tray event: PointerButton - state: {:?}, position: {:?}, button: {:?}",
+                        state, position, button
+                    );
                 }
                 _ => (),
             }
