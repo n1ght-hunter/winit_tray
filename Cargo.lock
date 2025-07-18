@@ -1582,18 +1582,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "winit-tray"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tracing",
- "tracing-subscriber",
- "winit",
- "winit_tray_core",
- "winit_tray_windows",
-]
-
-[[package]]
 name = "winit-uikit"
 version = "0.30.11"
 source = "git+https://github.com/rust-windowing/winit.git?rev=e7a6034#e7a6034b559dfdd23a7eaa8b9bba6e88d621221b"
@@ -1701,6 +1689,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "winit_tray"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tracing",
+ "tracing-subscriber",
+ "winit",
+ "winit_tray_core",
+ "winit_tray_windows",
+]
+
+[[package]]
 name = "winit_tray_core"
 version = "0.1.0"
 dependencies = [
@@ -1712,6 +1712,7 @@ dependencies = [
 name = "winit_tray_windows"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "windows-sys 0.59.0",
  "winit",
  "winit_tray_core",

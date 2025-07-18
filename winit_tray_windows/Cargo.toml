@@ -8,3 +8,4 @@ edition = "2024"
 winit.workspace = true
 windows-sys.workspace = true
 winit_tray_core.workspace = true
+anyhow.workspace = true

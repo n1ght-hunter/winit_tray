@@ -17,9 +17,14 @@ pub trait Tray: Send + Sync + std::fmt::Debug {
     fn id(&self) -> tray_id::TrayId;
 }
 
+
+/// Run on main thread
+struct Runner {}
+
 #[derive(Debug)]
 pub struct TrayAttributes {
     pub tooltip: String,
+    pub class_name: String,
     pub icon: Option<Icon>,
     pub(crate) parent_window: Option<SendSyncRawWindowHandle>,
 }
@@ -30,6 +35,7 @@ impl Default for TrayAttributes {
             tooltip: "Winit Tray".to_string(),
             icon: None,
             parent_window: None,
+            class_name: "Window Class".to_string(),
         }
     }
 }
@@ -44,6 +50,12 @@ impl TrayAttributes {
     /// Set the icon for the tray.
     pub fn with_icon(mut self, icon: Option<Icon>) -> Self {
         self.icon = icon;
+        self
+    }
+
+    /// Set the class name for the tray window.
+    pub fn with_class_name(mut self, class_name: impl Into<String>) -> Self {
+        self.class_name = class_name.into();
         self
     }
 
@@ -69,6 +81,11 @@ impl TrayAttributes {
     ) -> Self {
         self.parent_window = parent_window.map(SendSyncRawWindowHandle);
         self
+    }
+
+    /// Get the parent window stored on the attributes.
+    pub fn parent_window(&self) -> Option<&rwh_06::RawWindowHandle> {
+        self.parent_window.as_ref().map(|handle| &handle.0)
     }
 }
 
