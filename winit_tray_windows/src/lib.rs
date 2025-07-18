@@ -4,7 +4,7 @@ mod util;
 use std::{cell::Cell, ffi::OsStr, ptr, rc::Rc};
 
 use windows_sys::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, POINT, TRUE, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Shell::{
@@ -45,9 +45,12 @@ impl SyncWindowHandle {
     }
 }
 
+static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
 pub struct Tray {
     window_handle: SyncWindowHandle,
     proxy: TrayProxy,
+    inernal_id: u32,
 }
 
 impl std::fmt::Debug for Tray {
@@ -67,18 +70,22 @@ impl Tray {
         unsafe { init(proxy, attr) }
     }
 
+    #[inline]
     pub fn hwnd(&self) -> HWND {
         self.window_handle.hwnd()
     }
 
     pub fn set_tooltip<S: AsRef<OsStr>>(&self, tooltip: Option<S>) -> Result<(), anyhow::Error> {
         let mut nid = NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
             uFlags: NIF_TIP,
             hWnd: self.hwnd(),
+            uID: 1,
+            // uID: self.internal_id,
             ..unsafe { std::mem::zeroed() }
         };
         if let Some(tooltip) = &tooltip {
-            let tip = util::encode_wide(tooltip.as_ref());
+            let tip = util::encode_wide(tooltip);
             #[allow(clippy::manual_memcpy)]
             for i in 0..tip.len().min(128) {
                 nid.szTip[i] = tip[i];
@@ -159,10 +166,11 @@ impl WindowData {
 }
 
 impl InitData {
-    unsafe fn create_window(&self, window: HWND) -> Tray {
+    unsafe fn create_tray(&self, window: HWND) -> Tray {
         Tray {
             window_handle: SyncWindowHandle(window),
             proxy: self.proxy.clone(),
+            inernal_id: COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 
@@ -177,7 +185,7 @@ impl InitData {
 
     unsafe fn on_nccreate(&mut self, window: HWND) -> Option<isize> {
         let res = self.runner.catch_unwind(|| {
-            let tray = unsafe { self.create_window(window) };
+            let tray = unsafe { self.create_tray(window) };
             let tray_data = unsafe { self.create_tray_data(&tray) };
             (tray, tray_data)
         });
@@ -190,13 +198,8 @@ impl InitData {
     }
 
     pub unsafe fn on_create(&mut self) {
-        let _tray = self.tray.as_mut().expect("failed window creation");
+        let tray = self.tray.as_mut().expect("failed window creation");
         // This is where you can perform additional setup after the window has been created.
-
-        // if let Some(tooltip) = self.attributes.tooltip.as_ref() {
-        //     tray.set_tooltip(Some(tooltip))
-        //         .expect("Failed to set tooltip");
-        // }
     }
 }
 unsafe fn init(
@@ -275,51 +278,14 @@ unsafe fn init(
 
     let tray = initdata.tray.unwrap();
 
-    let icon: HICON = unsafe {
-        let mut handle = LoadIconW(
-            GetModuleHandleW(std::ptr::null()),
-            util::encode_wide("tray-default").as_ptr(),
-        );
-        if handle.is_null() {
-            // Fallback to a default icon if the specified icon could not be loaded
-            handle = LoadIconW(0 as _, IDI_APPLICATION);
-        }
-        if handle.is_null() {
-            return Err(std::io::Error::last_os_error().into());
-        }
-        handle
-    };
-
-    let nid = unsafe {
-        NOTIFYICONDATAW {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: tray.hwnd(),
-            uID: 1,
-            uFlags: NIF_MESSAGE | NIF_ICON,
-            hIcon: icon,
-            uCallbackMessage: WM_USER + 1,
-            ..std::mem::zeroed()
-        }
-    };
-
-    if unsafe { Shell_NotifyIconW(NIM_ADD, &nid) } == 0 {
-        return Err(std::io::Error::last_os_error().into());
-    }
-
-    // Setup menu
-    let info = unsafe {
-        MENUINFO {
-            cbSize: std::mem::size_of::<MENUINFO>() as u32,
-            fMask: MIM_APPLYTOSUBMENUS | MIM_STYLE,
-            dwStyle: MNS_NOTIFYBYPOS,
-            ..std::mem::zeroed()
-        }
-    };
-    let hmenu = unsafe { CreatePopupMenu() };
-    if hmenu.is_null() {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    if unsafe { SetMenuInfo(hmenu, &info) } == 0 {
+    if !unsafe {
+        register_tray_icon(
+            tray.hwnd(),
+            tray.inernal_id,
+            None,
+            (&initdata.attributes.tooltip).as_ref(),
+        )
+    } {
         return Err(std::io::Error::last_os_error().into());
     }
 
@@ -525,4 +491,58 @@ unsafe fn public_window_callback_inner(
 pub(crate) enum ProcResult {
     DefWindowProc(WPARAM),
     Value(isize),
+}
+const WM_USER_TRAYICON: u32 = 6002;
+
+#[inline]
+unsafe fn register_tray_icon<S: AsRef<OsStr>>(
+    hwnd: HWND,
+    tray_id: u32,
+    hicon: Option<HICON>,
+    tooltip: Option<S>,
+) -> bool {
+    let mut h_icon = std::ptr::null_mut();
+    let mut flags = NIF_MESSAGE | NIF_ICON;
+    let mut sz_tip: [u16; 128] = [0; 128];
+
+    if let Some(hicon) = hicon {
+        h_icon = hicon;
+    } else {
+        let mut handle = unsafe {
+            LoadIconW(
+                GetModuleHandleW(std::ptr::null()),
+                util::encode_wide("tray-default").as_ptr(),
+            )
+        };
+        if handle.is_null() {
+            // Fallback to a default icon if the specified icon could not be loaded
+            handle = unsafe { LoadIconW(0 as _, IDI_APPLICATION) };
+        }
+        if handle.is_null() {
+            return false;
+        }
+        h_icon = handle;
+
+    }
+
+    if let Some(tooltip) = tooltip {
+        flags |= NIF_TIP;
+        let tip = util::encode_wide(tooltip);
+        #[allow(clippy::manual_memcpy)]
+        for i in 0..tip.len().min(128) {
+            sz_tip[i] = tip[i];
+        }
+    }
+
+    let mut nid = NOTIFYICONDATAW {
+        uFlags: flags,
+        hWnd: hwnd,
+        uID: tray_id,
+        uCallbackMessage: WM_USER_TRAYICON,
+        hIcon: h_icon,
+        szTip: sz_tip,
+        ..unsafe { std::mem::zeroed() }
+    };
+
+    unsafe { Shell_NotifyIconW(NIM_ADD, &mut nid as _) == TRUE }
 }
