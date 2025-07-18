@@ -1,4 +1,4 @@
-use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::event_loop::{EventLoop, EventLoopProxy};
 pub use winit_tray_core::*;
 
 #[cfg(windows)]
