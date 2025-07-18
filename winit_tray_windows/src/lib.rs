@@ -501,12 +501,11 @@ unsafe fn register_tray_icon<S: AsRef<OsStr>>(
     hicon: Option<HICON>,
     tooltip: Option<S>,
 ) -> bool {
-    let mut h_icon = std::ptr::null_mut();
     let mut flags = NIF_MESSAGE | NIF_ICON;
     let mut sz_tip: [u16; 128] = [0; 128];
 
-    if let Some(hicon) = hicon {
-        h_icon = hicon;
+    let h_icon = if let Some(hicon) = hicon {
+        hicon
     } else {
         let mut handle = unsafe {
             LoadIconW(
@@ -521,9 +520,8 @@ unsafe fn register_tray_icon<S: AsRef<OsStr>>(
         if handle.is_null() {
             return false;
         }
-        h_icon = handle;
-
-    }
+        handle
+    };
 
     if let Some(tooltip) = tooltip {
         flags |= NIF_TIP;
