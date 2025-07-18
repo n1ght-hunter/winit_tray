@@ -30,7 +30,6 @@ impl ApplicationHandler for App {
         let tray_attributes =
             winit_tray_core::TrayAttributes::default().with_tooltip("Winit Tray Example");
 
-        println!("Creating tray with attributes: {:?}", tray_attributes);
         self.tray = match self.tray_manager.create_tray(tray_attributes) {
             Ok(tray) => Some(tray),
             Err(err) => {
@@ -39,7 +38,6 @@ impl ApplicationHandler for App {
                 return;
             }
         };
-        println!("Tray created successfully");
         let window_attributes = WindowAttributes::default();
         self.window = match event_loop.create_window(window_attributes) {
             Ok(window) => Some(window),
