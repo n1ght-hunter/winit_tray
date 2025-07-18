@@ -1,6 +1,14 @@
-use std::{ffi::{OsStr, OsString}, iter::once, os::windows::ffi::{OsStrExt as _, OsStringExt as _}};
+use std::{
+    ffi::{OsStr, OsString},
+    iter::once,
+    os::windows::ffi::{OsStrExt as _, OsStringExt as _},
+};
 
-use windows_sys::Win32::{Foundation::{HMODULE, HWND}, System::SystemServices::IMAGE_DOS_HEADER, UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX};
+use windows_sys::Win32::{
+    Foundation::{HMODULE, HWND},
+    System::SystemServices::IMAGE_DOS_HEADER,
+    UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX,
+};
 
 pub fn get_instance_handle() -> HMODULE {
     // Gets the instance handle by taking the address of the
@@ -43,7 +51,6 @@ pub(crate) unsafe fn set_window_long(
             as isize
     };
 }
-
 
 pub fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
     string.as_ref().encode_wide().chain(once(0)).collect()

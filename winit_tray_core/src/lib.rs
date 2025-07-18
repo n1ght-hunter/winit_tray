@@ -1,7 +1,10 @@
-use winit::{dpi::PhysicalPosition, event::{ButtonSource, ElementState}, icon::Icon};
+use winit::{
+    dpi::PhysicalPosition,
+    event::{ButtonSource, ElementState},
+    icon::Icon,
+};
 
 pub mod tray_id;
-
 
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +29,6 @@ pub enum TrayEvent {
         // /// A pointer is considered primary when it's a mouse, the first finger in a multi-touch
         // /// interaction, or an unknown pointer source.
         // primary: bool,
-
         button: ButtonSource,
     },
 }

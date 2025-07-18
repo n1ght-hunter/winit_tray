@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::Win32::UI::WindowsAndMessaging::RegisterWindowMessageA;
 
-
 /// A lazily-initialized window message ID.
 pub struct LazyMessageId {
     /// The ID.
@@ -18,7 +17,10 @@ const INVALID_ID: u32 = 0x0;
 impl LazyMessageId {
     /// Create a new `LazyId`.
     const fn new(name: &'static str) -> Self {
-        Self { id: AtomicU32::new(INVALID_ID), name }
+        Self {
+            id: AtomicU32::new(INVALID_ID),
+            name,
+        }
     }
 
     /// Get the message ID.
@@ -52,8 +54,6 @@ impl LazyMessageId {
         new_id
     }
 }
-
-
 
 // Message sent by a `Window` when it wants to be destroyed by the main thread.
 // WPARAM and LPARAM are unused.
