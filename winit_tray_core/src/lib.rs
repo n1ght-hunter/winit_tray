@@ -1,14 +1,21 @@
+use std::marker::PhantomData;
+
 use winit::{
     dpi::PhysicalPosition,
     event::{ButtonSource, ElementState},
     icon::Icon,
 };
 
+#[cfg(feature = "menu")]
+pub mod menu;
+#[cfg(feature = "menu")]
+pub use menu::*;
+
 pub mod tray_id;
 
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
-pub enum TrayEvent {
+pub enum TrayEvent<T = ()> {
     PointerButton {
         state: ElementState,
 
@@ -31,34 +38,54 @@ pub enum TrayEvent {
         // primary: bool,
         button: ButtonSource,
     },
+
+    /// A menu item was clicked.
+    #[cfg(feature = "menu")]
+    MenuItemClicked {
+        /// The ID of the clicked menu item.
+        id: T,
+    },
+
+    /// Phantom variant to keep the type parameter used when menu feature is disabled.
+    #[doc(hidden)]
+    #[cfg(not(feature = "menu"))]
+    __Phantom(PhantomData<T>),
 }
 
-pub type TrayProxy = std::sync::Arc<dyn Fn(tray_id::TrayId, TrayEvent) + Send + Sync>;
+pub type TrayProxy<T = ()> = std::sync::Arc<dyn Fn(tray_id::TrayId, TrayEvent<T>) + Send + Sync>;
 
 pub trait Tray: Send + Sync + std::fmt::Debug {
     fn id(&self) -> tray_id::TrayId;
 }
 
 #[derive(Debug)]
-pub struct TrayAttributes {
+pub struct TrayAttributes<T = ()> {
     pub tooltip: Option<String>,
     pub class_name: String,
     pub icon: Option<Icon>,
     pub(crate) parent_window: Option<SendSyncRawWindowHandle>,
+    #[cfg(feature = "menu")]
+    pub menu: Option<Vec<MenuEntry<T>>>,
+    #[cfg(not(feature = "menu"))]
+    _marker: PhantomData<T>,
 }
 
-impl Default for TrayAttributes {
+impl<T> Default for TrayAttributes<T> {
     fn default() -> Self {
         TrayAttributes {
             tooltip: None,
             icon: None,
             parent_window: None,
             class_name: "Window Tray Class".to_string(),
+            #[cfg(feature = "menu")]
+            menu: None,
+            #[cfg(not(feature = "menu"))]
+            _marker: PhantomData,
         }
     }
 }
 
-impl TrayAttributes {
+impl<T> TrayAttributes<T> {
     /// Set the tooltip for the tray icon.
     pub fn with_tooltip(mut self, title: impl Into<String>) -> Self {
         self.tooltip = Some(title.into());
@@ -106,6 +133,15 @@ impl TrayAttributes {
     /// Get the parent window stored on the attributes.
     pub fn parent_window(&self) -> Option<&rwh_06::RawWindowHandle> {
         self.parent_window.as_ref().map(|handle| &handle.0)
+    }
+
+    /// Set the context menu for the tray icon.
+    ///
+    /// The menu will be displayed when the user right-clicks the tray icon.
+    #[cfg(feature = "menu")]
+    pub fn with_menu(mut self, menu: Vec<MenuEntry<T>>) -> Self {
+        self.menu = Some(menu);
+        self
     }
 }
 

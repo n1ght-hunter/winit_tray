@@ -3,6 +3,10 @@ name = "winit_tray"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+menu = ["winit_tray_windows/menu", "winit_tray_core/menu"]
+
 [dependencies]
 winit_tray_windows.workspace = true
 winit.workspace = true

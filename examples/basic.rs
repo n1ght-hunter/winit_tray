@@ -9,6 +9,8 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
+#[cfg(feature = "menu")]
+use winit_tray_core::{MenuEntry, MenuItem, Submenu};
 
 fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     let image = image::open(path)?.into_rgba8();
@@ -18,10 +20,28 @@ fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     Ok(Icon::from(icon))
 }
 
+/// Menu item identifiers using an enum for type safety.
+#[cfg(feature = "menu")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MenuAction {
+    Open,
+    Settings,
+    DarkMode,
+    OptionA,
+    OptionB,
+    Exit,
+}
+
+#[cfg(feature = "menu")]
+type MenuId = MenuAction;
+
+#[cfg(not(feature = "menu"))]
+type MenuId = ();
+
 #[derive(Debug)]
 struct App {
     window: Option<Box<dyn Window>>,
-    tray_manager: winit_tray::TrayManager,
+    tray_manager: winit_tray::TrayManager<MenuId>,
     tray: Option<Box<dyn winit_tray::Tray>>,
 }
 
@@ -47,6 +67,31 @@ impl ApplicationHandler for App {
             }
         };
 
+        // Build the context menu (when menu feature is enabled)
+        #[cfg(feature = "menu")]
+        let menu = vec![
+            MenuEntry::Item(MenuItem::new(MenuAction::Open, "Open")),
+            MenuEntry::Item(MenuItem::new(MenuAction::Settings, "Settings").enabled(false)),
+            MenuEntry::Separator,
+            MenuEntry::Item(MenuItem::new(MenuAction::DarkMode, "Dark Mode").checked(false)),
+            MenuEntry::Submenu(Submenu::new(
+                "Options",
+                vec![
+                    MenuEntry::Item(MenuItem::new(MenuAction::OptionA, "Option A").checked(true)),
+                    MenuEntry::Item(MenuItem::new(MenuAction::OptionB, "Option B").checked(false)),
+                ],
+            )),
+            MenuEntry::Separator,
+            MenuEntry::Item(MenuItem::new(MenuAction::Exit, "Exit")),
+        ];
+
+        #[cfg(feature = "menu")]
+        let tray_attributes = winit_tray_core::TrayAttributes::default()
+            .with_tooltip("Winit Tray Example")
+            .with_icon(icon.clone())
+            .with_menu(menu);
+
+        #[cfg(not(feature = "menu"))]
         let tray_attributes = winit_tray_core::TrayAttributes::default()
             .with_tooltip("Winit Tray Example")
             .with_icon(icon.clone());
@@ -71,7 +116,7 @@ impl ApplicationHandler for App {
         };
     }
 
-    fn proxy_wake_up(&mut self, _event_loop: &dyn ActiveEventLoop) {
+    fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
         while let Ok((_id, event)) = self.tray_manager.try_recv() {
             match event {
                 winit_tray_core::TrayEvent::PointerButton {
@@ -81,7 +126,31 @@ impl ApplicationHandler for App {
                 } => {
                     info!(?state, ?position, ?button, "tray icon clicked");
                 }
-                _ => (),
+                #[cfg(feature = "menu")]
+                winit_tray_core::TrayEvent::MenuItemClicked { id } => {
+                    info!(?id, "menu item clicked");
+                    match id {
+                        MenuAction::DarkMode => {
+                            // Toggle dark mode
+                            let current = winit_tray_windows::menu::is_dark_mode_enabled();
+                            winit_tray_windows::menu::set_dark_mode(!current);
+                            info!(dark_mode = !current, "dark mode toggled");
+                        }
+                        MenuAction::Exit => {
+                            info!("exit menu item clicked, stopping");
+                            event_loop.exit();
+                        }
+                        MenuAction::Open => {
+                            info!("open clicked");
+                        }
+                        MenuAction::OptionA | MenuAction::OptionB => {
+                            info!(?id, "option selected");
+                        }
+                        _ => {}
+                    }
+                }
+                #[allow(unreachable_patterns)]
+                _ => {}
             }
         }
     }

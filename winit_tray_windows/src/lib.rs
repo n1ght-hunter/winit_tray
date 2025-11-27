@@ -1,6 +1,9 @@
 pub mod msg;
 mod util;
 
+#[cfg(feature = "menu")]
+pub mod menu;
+
 use std::{cell::Cell, ffi::OsStr, ptr, rc::Rc};
 
 use windows_sys::Win32::{
@@ -48,13 +51,13 @@ impl SyncWindowHandle {
 
 static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
-pub struct Tray {
+pub struct Tray<T = ()> {
     window_handle: SyncWindowHandle,
-    proxy: TrayProxy,
+    proxy: TrayProxy<T>,
     inernal_id: u32,
 }
 
-impl std::fmt::Debug for Tray {
+impl<T> std::fmt::Debug for Tray<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tray")
             .field("window_handle", &self.window_handle)
@@ -63,10 +66,10 @@ impl std::fmt::Debug for Tray {
     }
 }
 
-impl Tray {
+impl<T: Clone + Send + Sync + 'static> Tray<T> {
     pub fn new(
-        proxy: TrayProxy,
-        attr: winit_tray_core::TrayAttributes,
+        proxy: TrayProxy<T>,
+        attr: winit_tray_core::TrayAttributes<T>,
     ) -> Result<Self, anyhow::Error> {
         unsafe { init(proxy, attr) }
     }
@@ -100,7 +103,7 @@ impl Tray {
     }
 }
 
-impl CoreTray for Tray {
+impl<T> CoreTray for Tray<T> {
     fn id(&self) -> winit_tray_core::tray_id::TrayId {
         // Generate a unique ID for the tray icon.
         // This is a placeholder; actual implementation may vary.
@@ -108,12 +111,12 @@ impl CoreTray for Tray {
     }
 }
 
-impl Drop for Tray {
+impl<T> Drop for Tray<T> {
     fn drop(&mut self) {
         unsafe {
             // The window must be destroyed from the same thread that created it, so we send a
             // custom message to be handled by our callback to do the actual work.
-            PostMessageW(self.hwnd(), DESTROY_MSG_ID.get(), 0, 0);
+            PostMessageW(self.window_handle.hwnd(), DESTROY_MSG_ID.get(), 0, 0);
         }
     }
 }
@@ -137,7 +140,7 @@ const PIXEL_SIZE: usize = std::mem::size_of::<Pixel>();
 
 /// Converts an `Icon` to a Windows `HICON` handle.
 /// Returns `None` if the icon cannot be converted.
-fn icon_to_hicon(icon: &Icon) -> Option<HICON> {
+pub(crate) fn icon_to_hicon(icon: &Icon) -> Option<HICON> {
     // Try to downcast to RgbaIcon
     if let Some(rgba) = icon.0.cast_ref::<RgbaIcon>() {
         let pixel_count = rgba.buffer().len() / PIXEL_SIZE;
@@ -174,12 +177,15 @@ fn icon_to_hicon(icon: &Icon) -> Option<HICON> {
     None
 }
 
-pub(crate) struct InitData {
-    pub attributes: TrayAttributes,
-    pub proxy: TrayProxy,
+#[repr(C)]
+pub(crate) struct InitData<T> {
+    // MUST be first field to match InitDataHeader layout
+    vtable: InitDataVTable,
+    pub attributes: TrayAttributes<T>,
+    pub proxy: TrayProxy<T>,
     pub runner: Rc<Runner>,
     // outputs
-    pub tray: Option<Tray>,
+    pub tray: Option<Tray<T>>,
 }
 
 #[derive(Default)]
@@ -206,25 +212,69 @@ impl Runner {
     }
 }
 
+/// Type-erased event sender that can send TrayEvent<T> for any T.
+type ErasedEventSender = Box<dyn Fn(HWND, TrayEvent<()>) + Send + Sync>;
+
+/// Type-erased menu handler that shows the menu and sends the MenuItemClicked event.
+#[cfg(feature = "menu")]
+type ErasedMenuHandler = Box<dyn Fn(HWND, i32, i32) + Send + Sync>;
+
 struct WindowData {
     pub userdata_removed: Cell<bool>,
     pub recurse_depth: Cell<u32>,
     pub runner: Rc<Runner>,
-    pub proxy: TrayProxy,
+    pub event_sender: ErasedEventSender,
+    #[cfg(feature = "menu")]
+    pub menu_handler: Option<ErasedMenuHandler>,
 }
 
 impl WindowData {
-    pub fn send_event(&self, hwnd: HWND, event: TrayEvent) {
+    pub fn send_pointer_event(&self, hwnd: HWND, event: TrayEvent<()>) {
         trace!(?event, "sending tray event");
-        (self.proxy)(
-            winit_tray_core::tray_id::TrayId::from_raw(hwnd as usize),
-            event,
-        );
+        (self.event_sender)(hwnd, event);
+    }
+
+    #[cfg(feature = "menu")]
+    pub fn show_menu(&self, hwnd: HWND, x: i32, y: i32) {
+        if let Some(ref handler) = self.menu_handler {
+            handler(hwnd, x, y);
+        }
     }
 }
 
-impl InitData {
-    unsafe fn create_tray(&self, window: HWND) -> Tray {
+/// Type-erased vtable functions for InitData<T>
+unsafe fn initdata_on_nccreate<T: Clone + Send + Sync + 'static>(
+    this: *mut std::ffi::c_void,
+    window: HWND,
+) -> Option<isize> {
+    unsafe {
+        let initdata = &mut *(this as *mut InitData<T>);
+        initdata.on_nccreate(window)
+    }
+}
+
+unsafe fn initdata_on_create<T: Clone + Send + Sync + 'static>(this: *mut std::ffi::c_void) {
+    unsafe {
+        let initdata = &mut *(this as *mut InitData<T>);
+        initdata.on_create();
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> InitData<T> {
+    fn new(attributes: TrayAttributes<T>, proxy: TrayProxy<T>, runner: Rc<Runner>) -> Self {
+        Self {
+            vtable: InitDataVTable {
+                on_nccreate: initdata_on_nccreate::<T>,
+                on_create: initdata_on_create::<T>,
+            },
+            attributes,
+            proxy,
+            runner,
+            tray: None,
+        }
+    }
+
+    unsafe fn create_tray(&self, window: HWND) -> Tray<T> {
         Tray {
             window_handle: SyncWindowHandle(window),
             proxy: self.proxy.clone(),
@@ -232,12 +282,51 @@ impl InitData {
         }
     }
 
-    unsafe fn create_tray_data(&self, tray: &Tray) -> WindowData {
+    unsafe fn create_tray_data(&self, _tray: &Tray<T>) -> WindowData {
+        let proxy = self.proxy.clone();
+
+        // Create a type-erased event sender for pointer events
+        let event_sender: ErasedEventSender = Box::new(move |hwnd, event| {
+            // Convert the unit event to the appropriate T event
+            let typed_event = match event {
+                TrayEvent::PointerButton { state, position, button } => {
+                    TrayEvent::PointerButton { state, position, button }
+                }
+                #[cfg(feature = "menu")]
+                TrayEvent::MenuItemClicked { .. } => {
+                    // This shouldn't happen for pointer events
+                    return;
+                }
+                _ => return, // Handle any future TrayEvent variants
+            };
+            (proxy)(
+                winit_tray_core::tray_id::TrayId::from_raw(hwnd as usize),
+                typed_event,
+            );
+        });
+
+        #[cfg(feature = "menu")]
+        let menu_handler: Option<ErasedMenuHandler> = self.attributes.menu.as_ref().map(|items| {
+            let items = items.clone();
+            let proxy = self.proxy.clone();
+            let handler: ErasedMenuHandler = Box::new(move |hwnd, x, y| {
+                if let Some(id) = unsafe { menu::show_context_menu(hwnd, &items, x, y) } {
+                    (proxy)(
+                        winit_tray_core::tray_id::TrayId::from_raw(hwnd as usize),
+                        TrayEvent::MenuItemClicked { id },
+                    );
+                }
+            });
+            handler
+        });
+
         WindowData {
             userdata_removed: Cell::new(false),
             recurse_depth: Cell::new(0),
             runner: self.runner.clone(),
-            proxy: self.proxy.clone(),
+            event_sender,
+            #[cfg(feature = "menu")]
+            menu_handler,
         }
     }
 
@@ -256,14 +345,14 @@ impl InitData {
     }
 
     pub unsafe fn on_create(&mut self) {
-        let tray = self.tray.as_mut().expect("failed window creation");
+        let _tray = self.tray.as_mut().expect("failed window creation");
         // This is where you can perform additional setup after the window has been created.
     }
 }
-unsafe fn init(
-    proxy: TrayProxy,
-    attr: winit_tray_core::TrayAttributes,
-) -> Result<Tray, anyhow::Error> {
+unsafe fn init<T: Clone + Send + Sync + 'static>(
+    proxy: TrayProxy<T>,
+    attr: winit_tray_core::TrayAttributes<T>,
+) -> Result<Tray<T>, anyhow::Error> {
     let class_name = util::encode_wide(&attr.class_name);
 
     let class = WNDCLASSEXW {
@@ -293,12 +382,7 @@ unsafe fn init(
         _ => None,
     };
 
-    let mut initdata = InitData {
-        tray: None,
-        attributes: attr,
-        runner: Default::default(),
-        proxy,
-    };
+    let mut initdata = InitData::new(attr, proxy, Default::default());
 
     let handle = unsafe {
         CreateWindowExW(
@@ -353,6 +437,18 @@ unsafe fn init(
     Ok(tray)
 }
 
+/// Type-erased vtable for InitData operations needed during window creation.
+struct InitDataVTable {
+    on_nccreate: unsafe fn(*mut std::ffi::c_void, HWND) -> Option<isize>,
+    on_create: unsafe fn(*mut std::ffi::c_void),
+}
+
+/// Header struct that contains the vtable, placed at the start of InitData<T>.
+#[repr(C)]
+struct InitDataHeader {
+    vtable: InitDataVTable,
+}
+
 unsafe extern "system" fn public_window_callback(
     window: HWND,
     msg: u32,
@@ -364,9 +460,10 @@ unsafe extern "system" fn public_window_callback(
     let userdata_ptr = match (userdata, msg) {
         (0, WM_NCCREATE) => {
             let createstruct = unsafe { &mut *(lparam as *mut CREATESTRUCTW) };
-            let initdata = unsafe { &mut *(createstruct.lpCreateParams as *mut InitData) };
+            let initdata_ptr = createstruct.lpCreateParams as *mut InitDataHeader;
+            let vtable = unsafe { &(*initdata_ptr).vtable };
 
-            let result = match unsafe { initdata.on_nccreate(window) } {
+            let result = match unsafe { (vtable.on_nccreate)(createstruct.lpCreateParams, window) } {
                 Some(userdata) => unsafe {
                     util::set_window_long(window, GWL_USERDATA, userdata as _);
                     DefWindowProcW(window, msg, wparam, lparam)
@@ -381,9 +478,9 @@ unsafe extern "system" fn public_window_callback(
         (0, WM_CREATE) => return -1,
         (_, WM_CREATE) => unsafe {
             let createstruct = &mut *(lparam as *mut CREATESTRUCTW);
-            let initdata = createstruct.lpCreateParams;
-            let initdata = &mut *(initdata as *mut InitData);
-            initdata.on_create();
+            let initdata_ptr = createstruct.lpCreateParams as *mut InitDataHeader;
+            let vtable = &(*initdata_ptr).vtable;
+            (vtable.on_create)(createstruct.lpCreateParams);
             return DefWindowProcW(window, msg, wparam, lparam);
         },
         (0, _) => return unsafe { DefWindowProcW(window, msg, wparam, lparam) },
@@ -441,7 +538,7 @@ unsafe fn public_window_callback_inner(
 
                 match lparam as u32 {
                     x if x == WM_LBUTTONUP => {
-                        userdata.send_event(
+                        userdata.send_pointer_event(
                             window,
                             TrayEvent::PointerButton {
                                 state: ElementState::Released,
@@ -451,7 +548,7 @@ unsafe fn public_window_callback_inner(
                         );
                     }
                     x if x == WM_RBUTTONUP => {
-                        userdata.send_event(
+                        userdata.send_pointer_event(
                             window,
                             TrayEvent::PointerButton {
                                 state: ElementState::Released,
@@ -459,9 +556,13 @@ unsafe fn public_window_callback_inner(
                                 button: winit_core::event::ButtonSource::Mouse(MouseButton::Right),
                             },
                         );
+
+                        // Show context menu if configured
+                        #[cfg(feature = "menu")]
+                        userdata.show_menu(window, point.x, point.y);
                     }
                     x if x == WM_MBUTTONUP => {
-                        userdata.send_event(
+                        userdata.send_pointer_event(
                             window,
                             TrayEvent::PointerButton {
                                 state: ElementState::Released,
@@ -472,7 +573,7 @@ unsafe fn public_window_callback_inner(
                     }
                     x if x == WM_XBUTTONUP => {
                         if let Some(button) = MouseButton::try_from_u8(x as u8) {
-                            userdata.send_event(
+                            userdata.send_pointer_event(
                                 window,
                                 TrayEvent::PointerButton {
                                     state: ElementState::Released,
@@ -483,7 +584,7 @@ unsafe fn public_window_callback_inner(
                         }
                     }
                     x if x == WM_LBUTTONDOWN => {
-                        userdata.send_event(
+                        userdata.send_pointer_event(
                             window,
                             TrayEvent::PointerButton {
                                 state: ElementState::Pressed,
@@ -493,7 +594,7 @@ unsafe fn public_window_callback_inner(
                         );
                     }
                     x if x == WM_RBUTTONDOWN => {
-                        userdata.send_event(
+                        userdata.send_pointer_event(
                             window,
                             TrayEvent::PointerButton {
                                 state: ElementState::Pressed,
@@ -503,7 +604,7 @@ unsafe fn public_window_callback_inner(
                         );
                     }
                     x if x == WM_MBUTTONDOWN => {
-                        userdata.send_event(
+                        userdata.send_pointer_event(
                             window,
                             TrayEvent::PointerButton {
                                 state: ElementState::Pressed,
@@ -514,7 +615,7 @@ unsafe fn public_window_callback_inner(
                     }
                     x if x == WM_XBUTTONDOWN => {
                         if let Some(button) = MouseButton::try_from_u8(x as u8) {
-                            userdata.send_event(
+                            userdata.send_pointer_event(
                                 window,
                                 TrayEvent::PointerButton {
                                     state: ElementState::Pressed,
