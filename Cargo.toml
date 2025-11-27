@@ -29,12 +29,14 @@ anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+
+
 rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"] }
-
-
 winit-win32 = "=0.31.0-beta.2"
 winit = "=0.31.0-beta.2"
 winit-core = "=0.31.0-beta.2"
+dpi = "0.1.2"
+
 
 windows-sys = "0.59.0"
 image = "0.25"

@@ -14,17 +14,17 @@ use windows_sys::Win32::{
             CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateIcon, CreateWindowExW,
             DefWindowProcW, DestroyWindow, GWL_USERDATA, GetCursorPos, HICON, IDI_APPLICATION,
             LoadIconW, PostMessageW, RegisterClassExW, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP,
-            WM_MBUTTONDOWN, WM_MBUTTONUP, WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN,
-            WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-            WS_EX_TRANSPARENT, WS_OVERLAPPED,
+            WM_MBUTTONDOWN, WM_MBUTTONUP, WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP,
+            WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED,
         },
     },
 };
-use winit::{
-    dpi::PhysicalPosition,
+use dpi::PhysicalPosition;
+use rwh_06::RawWindowHandle;
+use winit_core::{
     event::{ElementState, MouseButton},
     icon::{Icon, RgbaIcon},
-    raw_window_handle::RawWindowHandle,
 };
 use winit_tray_core::{Tray as CoreTray, TrayAttributes, TrayEvent, TrayProxy};
 

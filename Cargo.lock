@@ -2396,8 +2396,9 @@ name = "winit_tray_windows"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dpi",
+ "raw-window-handle",
  "windows-sys 0.59.0",
- "winit",
  "winit-core",
  "winit_tray_core",
 ]
