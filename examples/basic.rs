@@ -3,6 +3,7 @@
 use std::error::Error;
 use std::path::Path;
 
+use tracing::{error, info, warn};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -41,7 +42,7 @@ impl ApplicationHandler for App {
         let icon = match load_icon(Path::new("assets/ferris.png")) {
             Ok(icon) => Some(icon),
             Err(err) => {
-                eprintln!("warning: failed to load icon: {err}");
+                warn!(%err, "failed to load icon");
                 None
             }
         };
@@ -53,7 +54,7 @@ impl ApplicationHandler for App {
         self.tray = match self.tray_manager.create_tray(tray_attributes) {
             Ok(tray) => Some(tray),
             Err(err) => {
-                eprintln!("error creating tray: {err}");
+                error!(%err, "failed to create tray");
                 event_loop.exit();
                 return;
             }
@@ -63,7 +64,7 @@ impl ApplicationHandler for App {
         self.window = match event_loop.create_window(window_attributes) {
             Ok(window) => Some(window),
             Err(err) => {
-                eprintln!("error creating window: {err}");
+                error!(%err, "failed to create window");
                 event_loop.exit();
                 return;
             }
@@ -78,10 +79,7 @@ impl ApplicationHandler for App {
                     position,
                     button,
                 } => {
-                    println!(
-                        "Tray event: PointerButton - state: {:?}, position: {:?}, button: {:?}",
-                        state, position, button
-                    );
+                    info!(?state, ?position, ?button, "tray icon clicked");
                 }
                 _ => (),
             }
@@ -91,7 +89,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                println!("Close was requested; stopping");
+                info!("close requested, stopping");
                 event_loop.exit();
             }
             WindowEvent::SurfaceResized(_) => {
