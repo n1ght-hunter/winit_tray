@@ -409,16 +409,16 @@ unsafe fn public_window_callback_inner(
                         );
                     }
                     x if x == WM_XBUTTONUP => {
-                        userdata.send_event(
-                            window,
-                            TrayEvent::PointerButton {
-                                state: ElementState::Released,
-                                position,
-                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Other(
-                                    0,
-                                )),
-                            },
-                        );
+                        if let Some(button) = MouseButton::try_from_u8(x as u8) {
+                            userdata.send_event(
+                                window,
+                                TrayEvent::PointerButton {
+                                    state: ElementState::Released,
+                                    position,
+                                    button: winit_core::event::ButtonSource::Mouse(button),
+                                },
+                            );
+                        }
                     }
                     x if x == WM_LBUTTONDOWN => {
                         userdata.send_event(
@@ -451,16 +451,16 @@ unsafe fn public_window_callback_inner(
                         );
                     }
                     x if x == WM_XBUTTONDOWN => {
-                        userdata.send_event(
-                            window,
-                            TrayEvent::PointerButton {
-                                state: ElementState::Pressed,
-                                position,
-                                button: winit_core::event::ButtonSource::Mouse(MouseButton::Other(
-                                    0,
-                                )),
-                            },
-                        );
+                        if let Some(button) = MouseButton::try_from_u8(x as u8) {
+                            userdata.send_event(
+                                window,
+                                TrayEvent::PointerButton {
+                                    state: ElementState::Pressed,
+                                    position,
+                                    button: winit_core::event::ButtonSource::Mouse(button),
+                                },
+                            );
+                        }
                     }
                     _ => unreachable!("Invalid mouse button event"),
                 };
