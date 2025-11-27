@@ -10,3 +10,4 @@ winit_tray_core.workspace = true
 anyhow.workspace = true
 dpi.workspace = true
 rwh_06.workspace = true
+tracing.workspace = true

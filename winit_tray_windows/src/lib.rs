@@ -26,6 +26,7 @@ use winit_core::{
     event::{ElementState, MouseButton},
     icon::{Icon, RgbaIcon},
 };
+use tracing::trace;
 use winit_tray_core::{Tray as CoreTray, TrayAttributes, TrayEvent, TrayProxy};
 
 use crate::msg::DESTROY_MSG_ID;
@@ -214,6 +215,7 @@ struct WindowData {
 
 impl WindowData {
     pub fn send_event(&self, hwnd: HWND, event: TrayEvent) {
+        trace!(?event, "sending tray event");
         (self.proxy)(
             winit_tray_core::tray_id::TrayId::from_raw(hwnd as usize),
             event,
@@ -421,7 +423,7 @@ unsafe fn public_window_callback_inner(
     userdata
         .runner
         .catch_unwind(|| match msg {
-            1025 if (lparam as u32 == WM_LBUTTONUP
+            WM_USER_TRAYICON if (lparam as u32 == WM_LBUTTONUP
                 || lparam as u32 == WM_RBUTTONUP
                 || lparam as u32 == WM_MBUTTONUP
                 || lparam as u32 == WM_XBUTTONUP

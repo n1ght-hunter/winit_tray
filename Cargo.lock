@@ -2398,6 +2398,7 @@ dependencies = [
  "anyhow",
  "dpi",
  "raw-window-handle",
+ "tracing",
  "windows-sys 0.59.0",
  "winit-core",
  "winit_tray_core",
