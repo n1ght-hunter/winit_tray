@@ -11,18 +11,19 @@ use windows_sys::Win32::{
             NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
         },
         WindowsAndMessaging::{
-            CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateWindowExW, DefWindowProcW,
-            DestroyWindow, GWL_USERDATA, GetCursorPos, HICON, IDI_APPLICATION, LoadIconW,
-            PostMessageW, RegisterClassExW, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP,
-            WM_MBUTTONDOWN, WM_MBUTTONUP, WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP,
-            WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-            WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED,
+            CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateIcon, CreateWindowExW,
+            DefWindowProcW, DestroyWindow, GWL_USERDATA, GetCursorPos, HICON, IDI_APPLICATION,
+            LoadIconW, PostMessageW, RegisterClassExW, WM_CREATE, WM_LBUTTONDOWN, WM_LBUTTONUP,
+            WM_MBUTTONDOWN, WM_MBUTTONUP, WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN,
+            WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            WS_EX_TRANSPARENT, WS_OVERLAPPED,
         },
     },
 };
 use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, MouseButton},
+    icon::{Icon, RgbaIcon},
     raw_window_handle::RawWindowHandle,
 };
 use winit_tray_core::{Tray as CoreTray, TrayAttributes, TrayEvent, TrayProxy};
@@ -114,6 +115,62 @@ impl Drop for Tray {
             PostMessageW(self.hwnd(), DESTROY_MSG_ID.get(), 0, 0);
         }
     }
+}
+
+/// Pixel structure for RGBA to BGRA conversion
+#[repr(C)]
+struct Pixel {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+impl Pixel {
+    fn convert_to_bgra(&mut self) {
+        std::mem::swap(&mut self.r, &mut self.b);
+    }
+}
+
+const PIXEL_SIZE: usize = std::mem::size_of::<Pixel>();
+
+/// Converts an `Icon` to a Windows `HICON` handle.
+/// Returns `None` if the icon cannot be converted.
+fn icon_to_hicon(icon: &Icon) -> Option<HICON> {
+    // Try to downcast to RgbaIcon
+    if let Some(rgba) = icon.0.cast_ref::<RgbaIcon>() {
+        let pixel_count = rgba.buffer().len() / PIXEL_SIZE;
+        let mut and_mask = Vec::with_capacity(pixel_count);
+
+        // We need to copy and convert the buffer since we can't mutate the original
+        let mut bgra_buffer = rgba.buffer().to_vec();
+        let pixels = unsafe {
+            std::slice::from_raw_parts_mut(bgra_buffer.as_mut_ptr() as *mut Pixel, pixel_count)
+        };
+
+        for pixel in pixels {
+            and_mask.push(pixel.a.wrapping_sub(u8::MAX)); // invert alpha channel
+            pixel.convert_to_bgra();
+        }
+
+        let handle = unsafe {
+            CreateIcon(
+                ptr::null_mut(),
+                rgba.width() as i32,
+                rgba.height() as i32,
+                1,
+                (PIXEL_SIZE * 8) as u8,
+                and_mask.as_ptr(),
+                bgra_buffer.as_ptr(),
+            )
+        };
+
+        if !handle.is_null() {
+            return Some(handle);
+        }
+    }
+
+    None
 }
 
 pub(crate) struct InitData {
@@ -277,11 +334,14 @@ unsafe fn init(
 
     let tray = initdata.tray.unwrap();
 
+    // Convert the Icon to HICON if provided
+    let hicon = initdata.attributes.icon.as_ref().and_then(icon_to_hicon);
+
     if !unsafe {
         register_tray_icon(
             tray.hwnd(),
             tray.inernal_id,
-            None,
+            hicon,
             (&initdata.attributes.tooltip).as_ref(),
         )
     } {

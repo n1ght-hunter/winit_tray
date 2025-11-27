@@ -1,11 +1,21 @@
 //! Simple winit window example.
 
 use std::error::Error;
+use std::path::Path;
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
+
+fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
+    let image = image::open(path)?.into_rgba8();
+    let (width, height) = image.dimensions();
+    let rgba = image.into_raw();
+    let icon = RgbaIcon::new(rgba, width, height)?;
+    Ok(Icon::from(icon))
+}
 
 #[derive(Debug)]
 struct App {
@@ -27,8 +37,18 @@ impl App {
 
 impl ApplicationHandler for App {
     fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-        let tray_attributes =
-            winit_tray_core::TrayAttributes::default().with_tooltip("Winit Tray Example");
+        // Load the ferris icon
+        let icon = match load_icon(Path::new("assets/ferris.png")) {
+            Ok(icon) => Some(icon),
+            Err(err) => {
+                eprintln!("warning: failed to load icon: {err}");
+                None
+            }
+        };
+
+        let tray_attributes = winit_tray_core::TrayAttributes::default()
+            .with_tooltip("Winit Tray Example")
+            .with_icon(icon.clone());
 
         self.tray = match self.tray_manager.create_tray(tray_attributes) {
             Ok(tray) => Some(tray),
@@ -38,7 +58,8 @@ impl ApplicationHandler for App {
                 return;
             }
         };
-        let window_attributes = WindowAttributes::default();
+
+        let window_attributes = WindowAttributes::default().with_window_icon(icon);
         self.window = match event_loop.create_window(window_attributes) {
             Ok(window) => Some(window),
             Err(err) => {
