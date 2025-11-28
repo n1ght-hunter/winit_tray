@@ -8,10 +8,12 @@ default = []
 menu = ["winit_tray_core/menu"]
 
 [dependencies]
-winit-core.workspace = true
-windows-sys.workspace = true
 winit_tray_core.workspace = true
-anyhow.workspace = true
-dpi.workspace = true
+winit-core.workspace = true
 rwh_06.workspace = true
 tracing.workspace = true
+anyhow.workspace = true
+dpi.workspace = true
+
+# Windows platform dependencies
+windows-sys.workspace = true

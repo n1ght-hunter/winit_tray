@@ -1,10 +1,10 @@
-use std::marker::PhantomData;
-
 use winit::{
     dpi::PhysicalPosition,
     event::{ButtonSource, ElementState},
     icon::Icon,
 };
+#[cfg(feature = "menu")]
+pub use winit::event::MouseButton;
 
 #[cfg(feature = "menu")]
 pub mod menu;
@@ -31,11 +31,6 @@ pub enum TrayEvent<T = ()> {
         /// [`transform`]: https://developer.mozilla.org/en-US/docs/Web/CSS/transform
         position: PhysicalPosition<f64>,
 
-        // /// Indicates whether the event is created by a primary pointer.
-        // ///
-        // /// A pointer is considered primary when it's a mouse, the first finger in a multi-touch
-        // /// interaction, or an unknown pointer source.
-        // primary: bool,
         button: ButtonSource,
     },
 
@@ -49,12 +44,12 @@ pub enum TrayEvent<T = ()> {
     /// Phantom variant to keep the type parameter used when menu feature is disabled.
     #[doc(hidden)]
     #[cfg(not(feature = "menu"))]
-    __Phantom(PhantomData<T>),
+    __Phantom(std::marker::PhantomData<T>),
 }
 
 pub type TrayProxy<T = ()> = std::sync::Arc<dyn Fn(tray_id::TrayId, TrayEvent<T>) + Send + Sync>;
 
-pub trait Tray: Send + Sync + std::fmt::Debug {
+pub trait Tray: std::fmt::Debug {
     fn id(&self) -> tray_id::TrayId;
 }
 
@@ -63,11 +58,14 @@ pub struct TrayAttributes<T = ()> {
     pub tooltip: Option<String>,
     pub class_name: String,
     pub icon: Option<Icon>,
-    pub(crate) parent_window: Option<SendSyncRawWindowHandle>,
+    pub parent_window: Option<rwh_06::RawWindowHandle>,
     #[cfg(feature = "menu")]
     pub menu: Option<Vec<MenuEntry<T>>>,
+    /// Which mouse button opens the menu. Defaults to `MouseButton::Right`.
+    #[cfg(feature = "menu")]
+    pub menu_on_button: MouseButton,
     #[cfg(not(feature = "menu"))]
-    _marker: PhantomData<T>,
+    _marker: std::marker::PhantomData<T>,
 }
 
 impl<T> Default for TrayAttributes<T> {
@@ -75,12 +73,14 @@ impl<T> Default for TrayAttributes<T> {
         TrayAttributes {
             tooltip: None,
             icon: None,
-            parent_window: None,
             class_name: "Window Tray Class".to_string(),
+            parent_window: None,
             #[cfg(feature = "menu")]
             menu: None,
+            #[cfg(feature = "menu")]
+            menu_on_button: MouseButton::Right,
             #[cfg(not(feature = "menu"))]
-            _marker: PhantomData,
+            _marker: std::marker::PhantomData,
         }
     }
 }
@@ -106,53 +106,28 @@ impl<T> TrayAttributes<T> {
         self
     }
 
-    /// Build window with parent window.
-    ///
-    /// The default is `None`.
-    ///
-    /// ## Safety
-    ///
-    /// `parent_window` must be a valid window handle.
-    ///
-    /// ## Platform-specific
-    ///
-    /// - **Windows** : A child window has the WS_CHILD style and is confined
-    ///   to the client area of its parent window. For more information, see
-    ///   <https://docs.microsoft.com/en-us/windows/win32/winmsg/window-features#child-windows>
-    /// - **X11**: A child window is confined to the client area of its parent window.
-    /// - **Android / iOS / Wayland / Web:** Unsupported.
-    #[inline]
-    pub unsafe fn with_parent_window(
-        mut self,
-        parent_window: Option<rwh_06::RawWindowHandle>,
-    ) -> Self {
-        self.parent_window = parent_window.map(SendSyncRawWindowHandle);
+    /// Set the parent window for the tray icon.
+    pub fn with_parent_window(mut self, parent_window: rwh_06::RawWindowHandle) -> Self {
+        self.parent_window = Some(parent_window);
         self
-    }
-
-    /// Get the parent window stored on the attributes.
-    pub fn parent_window(&self) -> Option<&rwh_06::RawWindowHandle> {
-        self.parent_window.as_ref().map(|handle| &handle.0)
     }
 
     /// Set the context menu for the tray icon.
     ///
-    /// The menu will be displayed when the user right-clicks the tray icon.
+    /// The menu will be displayed when the user clicks the tray icon with the configured button.
+    /// By default, the menu opens on right-click.
     #[cfg(feature = "menu")]
     pub fn with_menu(mut self, menu: Vec<MenuEntry<T>>) -> Self {
         self.menu = Some(menu);
         self
     }
+
+    /// Set which mouse button opens the menu.
+    ///
+    /// Defaults to `MouseButton::Right`.
+    #[cfg(feature = "menu")]
+    pub fn with_menu_on_button(mut self, button: MouseButton) -> Self {
+        self.menu_on_button = button;
+        self
+    }
 }
-
-/// Wrapper for [`rwh_06::RawWindowHandle`] for [`WindowAttributes::parent_window`].
-///
-/// # Safety
-///
-/// The user has to account for that when using [`WindowAttributes::with_parent_window()`],
-/// which is `unsafe`.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SendSyncRawWindowHandle(pub(crate) rwh_06::RawWindowHandle);
-
-unsafe impl Send for SendSyncRawWindowHandle {}
-unsafe impl Sync for SendSyncRawWindowHandle {}

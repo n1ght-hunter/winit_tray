@@ -3,8 +3,11 @@ use std::marker::PhantomData;
 use winit::event_loop::{EventLoop, EventLoopProxy};
 pub use winit_tray_core::*;
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 use winit_tray_windows as platform_impl;
+
+#[cfg(target_os = "macos")]
+use winit_tray_macos as platform_impl;
 
 pub struct TrayManager<T = ()> {
     proxy: EventLoopProxy,

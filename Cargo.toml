@@ -5,15 +5,23 @@ edition = "2024"
 
 [features]
 default = []
-menu = ["winit_tray_windows/menu", "winit_tray_core/menu"]
+menu = [
+    "winit_tray_windows/menu",
+    "winit_tray_macos/menu",
+    "winit_tray_core/menu",
+]
 
 [dependencies]
-winit_tray_windows.workspace = true
 winit.workspace = true
 winit_tray_core.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 
+[target.'cfg(target_os = "windows")'.dependencies]
+winit_tray_windows.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+winit_tray_macos.workspace = true
 
 [dev-dependencies]
 tracing.workspace = true
@@ -21,26 +29,57 @@ tracing-subscriber.workspace = true
 image.workspace = true
 
 
+# Workspace Configuration
+
 [workspace]
 resolver = "3"
-members = ["winit_tray_core", "winit_tray_windows"]
+members = ["winit_tray_core", "winit_tray_windows", "winit_tray_macos"]
 
 [workspace.dependencies]
-winit_tray_windows = { path = "winit_tray_windows" }
+# Internal crates
 winit_tray_core = { path = "winit_tray_core" }
+winit_tray_windows = { path = "winit_tray_windows" }
+winit_tray_macos = { path = "winit_tray_macos" }
 
+# Winit ecosystem (pinned to beta)
+winit = "=0.31.0-beta.2"
+winit-core = "=0.31.0-beta.2"
+dpi = "0.1.2"
+rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"] }
+
+# Error handling and logging
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
-
-rwh_06 = { package = "raw-window-handle", version = "0.6", features = ["std"] }
-winit-win32 = "=0.31.0-beta.2"
-winit = "=0.31.0-beta.2"
-winit-core = "=0.31.0-beta.2"
-dpi = "0.1.2"
-
-
-windows-sys = "0.59.0"
+# Image processing
 image = "0.25"
+png = "0.17"
+
+# Windows platform
+windows-sys = "0.59.0"
+
+# macOS platform (objc2 ecosystem)
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSData", "block2"] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSStatusBar",
+    "NSStatusItem",
+    "NSStatusBarButton",
+    "NSMenu",
+    "NSMenuItem",
+    "NSImage",
+    "NSImageRep",
+    "NSBitmapImageRep",
+    "NSButton",
+    "NSEvent",
+    "NSApplication",
+    "NSView",
+    "NSResponder",
+    "NSTrackingArea",
+    "NSControl",
+    "NSCell",
+] }
+objc2-core-foundation = "0.3"

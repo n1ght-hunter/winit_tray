@@ -131,10 +131,17 @@ impl ApplicationHandler for App {
                     info!(?id, "menu item clicked");
                     match id {
                         MenuAction::DarkMode => {
-                            // Toggle dark mode
-                            let current = winit_tray_windows::menu::is_dark_mode_enabled();
-                            winit_tray_windows::menu::set_dark_mode(!current);
-                            info!(dark_mode = !current, "dark mode toggled");
+                            // Toggle dark mode (Windows only)
+                            #[cfg(target_os = "windows")]
+                            {
+                                let current = winit_tray_windows::menu::is_dark_mode_enabled();
+                                winit_tray_windows::menu::set_dark_mode(!current);
+                                info!(dark_mode = !current, "dark mode toggled");
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                info!("dark mode toggle not implemented on this platform");
+                            }
                         }
                         MenuAction::Exit => {
                             info!("exit menu item clicked, stopping");

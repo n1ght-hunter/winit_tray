@@ -1,0 +1,24 @@
+[package]
+name = "winit_tray_macos"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+menu = ["winit_tray_core/menu"]
+
+[dependencies]
+winit_tray_core.workspace = true
+winit-core.workspace = true
+dpi.workspace = true
+rwh_06.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+png.workspace = true
+
+# macOS platform dependencies
+objc2.workspace = true
+block2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
+objc2-core-foundation.workspace = true
