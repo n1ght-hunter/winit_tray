@@ -1,3 +1,5 @@
+#![cfg(target_os = "windows")]
+
 pub mod msg;
 mod util;
 
