@@ -31,6 +31,9 @@ winit_tray_linux.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 image.workspace = true
+vello_cpu.workspace = true
+vello_common.workspace = true
+softbuffer.workspace = true
 
 
 # Workspace Configuration
@@ -64,6 +67,8 @@ png = "0.17"
 
 # Rendering (for examples)
 vello_cpu = "0.0.4"
+vello_common = "0.0.4"
+softbuffer = "0.4"
 
 # Windows platform
 windows-sys = "0.59.0"

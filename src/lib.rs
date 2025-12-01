@@ -9,6 +9,9 @@ use winit_tray_windows as platform_impl;
 #[cfg(target_os = "macos")]
 use winit_tray_macos as platform_impl;
 
+#[cfg(target_os = "linux")]
+use winit_tray_linux as platform_impl;
+
 pub struct TrayManager<T = ()> {
     proxy: EventLoopProxy,
     receiver: std::sync::mpsc::Receiver<(tray_id::TrayId, TrayEvent<T>)>,

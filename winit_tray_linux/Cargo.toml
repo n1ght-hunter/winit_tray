@@ -1,0 +1,19 @@
+[package]
+name = "winit_tray_linux"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+menu = ["winit_tray_core/menu"]
+
+[dependencies]
+winit_tray_core.workspace = true
+winit-core.workspace = true
+dpi.workspace = true
+rwh_06.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+# Linux-specific dependencies
+zbus = { version = "5.0", features = ["blocking-api"] }
