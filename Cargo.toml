@@ -8,6 +8,7 @@ default = []
 menu = [
     "winit_tray_windows/menu",
     "winit_tray_macos/menu",
+    "winit_tray_linux/menu",
     "winit_tray_core/menu",
 ]
 
@@ -23,6 +24,9 @@ winit_tray_windows.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 winit_tray_macos.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+winit_tray_linux.workspace = true
+
 [dev-dependencies]
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -33,13 +37,14 @@ image.workspace = true
 
 [workspace]
 resolver = "3"
-members = ["winit_tray_core", "winit_tray_windows", "winit_tray_macos"]
+members = ["winit_tray_core", "winit_tray_windows", "winit_tray_macos", "winit_tray_linux"]
 
 [workspace.dependencies]
 # Internal crates
 winit_tray_core = { path = "winit_tray_core" }
 winit_tray_windows = { path = "winit_tray_windows" }
 winit_tray_macos = { path = "winit_tray_macos" }
+winit_tray_linux = { path = "winit_tray_linux" }
 
 # Winit ecosystem (pinned to beta)
 winit = "=0.31.0-beta.2"
@@ -56,6 +61,9 @@ tracing-subscriber = "0.3"
 # Image processing
 image = "0.25"
 png = "0.17"
+
+# Rendering (for examples)
+vello_cpu = "0.0.4"
 
 # Windows platform
 windows-sys = "0.59.0"
@@ -83,3 +91,6 @@ objc2-app-kit = { version = "0.3", features = [
     "NSCell",
 ] }
 objc2-core-foundation = "0.3"
+
+# Linux platform
+zbus = { version = "5.0", features = ["blocking-api"] }

@@ -105,9 +105,16 @@ impl ApplicationHandler for App {
             }
         };
 
-        let window_attributes = WindowAttributes::default().with_window_icon(icon);
+        let window_attributes = WindowAttributes::default()
+            .with_window_icon(icon)
+            .with_title("Winit Tray Example");
+
         self.window = match event_loop.create_window(window_attributes) {
-            Ok(window) => Some(window),
+            Ok(window) => {
+                // Request an initial redraw so the window appears on Wayland
+                window.request_redraw();
+                Some(window)
+            }
             Err(err) => {
                 error!(%err, "failed to create window");
                 event_loop.exit();
@@ -116,7 +123,7 @@ impl ApplicationHandler for App {
         };
     }
 
-    fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
+    fn proxy_wake_up(&mut self, _event_loop: &dyn ActiveEventLoop) {
         while let Ok((_id, event)) = self.tray_manager.try_recv() {
             match event {
                 winit_tray_core::TrayEvent::PointerButton {
@@ -168,26 +175,16 @@ impl ApplicationHandler for App {
                 info!("close requested, stopping");
                 event_loop.exit();
             }
-            WindowEvent::SurfaceResized(_) => {
-                self.window
-                    .as_ref()
-                    .expect("resize event without a window")
-                    .request_redraw();
+            WindowEvent::SurfaceResized(_size) => {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
             }
             WindowEvent::RedrawRequested => {
-                // Redraw the application.
-                //
-                // It's preferable for applications that do not render continuously to render in
-                // this event rather than in AboutToWait, since rendering in here allows
-                // the program to gracefully handle redraws requested by the OS.
-
-                let window = self
-                    .window
-                    .as_ref()
-                    .expect("redraw request without a window");
-
-                // Notify that you're about to draw.
-                window.pre_present_notify();
+                // Notify that we're done presenting
+                if let Some(window) = &self.window {
+                    window.pre_present_notify();
+                }
             }
             _ => (),
         }
