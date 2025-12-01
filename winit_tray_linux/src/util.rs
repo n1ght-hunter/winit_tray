@@ -63,7 +63,7 @@ mod tests {
             255, 0, 0, 255, // Red pixel
         ];
 
-        let icon = Icon::from_rgba(rgba_data.clone(), 2, 2).unwrap();
+        let icon = Icon::from(RgbaIcon::new(rgba_data.clone(), 2, 2).unwrap());
         let sni_icon = icon_to_sni_icon(&icon).unwrap();
 
         assert_eq!(sni_icon.width, 2);

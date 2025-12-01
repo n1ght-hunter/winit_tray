@@ -27,23 +27,22 @@ winit_tray_macos.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 winit_tray_linux.workspace = true
 
-[dev-dependencies]
-tracing.workspace = true
-tracing-subscriber.workspace = true
-image.workspace = true
-vello_cpu.workspace = true
-vello_common.workspace = true
-softbuffer.workspace = true
-
 
 # Workspace Configuration
 
 [workspace]
 resolver = "3"
-members = ["winit_tray_core", "winit_tray_windows", "winit_tray_macos", "winit_tray_linux"]
+members = [
+    "winit_tray_core",
+    "winit_tray_windows",
+    "winit_tray_macos",
+    "winit_tray_linux",
+    "examples/*",
+]
 
 [workspace.dependencies]
 # Internal crates
+winit_tray = { path = ".", features = [] }
 winit_tray_core = { path = "winit_tray_core" }
 winit_tray_windows = { path = "winit_tray_windows" }
 winit_tray_macos = { path = "winit_tray_macos" }
@@ -76,7 +75,12 @@ windows-sys = "0.59.0"
 # macOS platform (objc2 ecosystem)
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSData", "block2"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSArray",
+    "NSData",
+    "block2",
+] }
 objc2-app-kit = { version = "0.3", features = [
     "NSStatusBar",
     "NSStatusItem",

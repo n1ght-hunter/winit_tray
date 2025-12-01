@@ -325,6 +325,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "basic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "image",
+ "softbuffer",
+ "tracing",
+ "tracing-subscriber",
+ "vello_cpu",
+ "winit",
+ "winit_tray",
+]
+
+[[package]]
 name = "bit_field"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3304,12 +3318,7 @@ name = "winit_tray"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "image",
- "softbuffer",
  "tracing",
- "tracing-subscriber",
- "vello_common",
- "vello_cpu",
  "winit",
  "winit_tray_core",
  "winit_tray_linux",
