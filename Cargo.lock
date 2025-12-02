@@ -803,6 +803,7 @@ dependencies = [
  "softbuffer",
  "tracing",
  "tracing-subscriber",
+ "vello_common",
  "vello_cpu",
  "winit",
  "winit_tray",

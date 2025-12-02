@@ -17,3 +17,4 @@ tracing-subscriber.workspace = true
 image.workspace = true
 softbuffer.workspace = true
 vello_cpu.workspace = true
+vello_common.workspace = true
