@@ -37,7 +37,7 @@ members = [
     "winit_tray_windows",
     "winit_tray_macos",
     "winit_tray_linux",
-    "examples/*",
+    "examples",
 ]
 
 [workspace.dependencies]

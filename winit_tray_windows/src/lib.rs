@@ -378,7 +378,7 @@ unsafe fn init<T: Clone + Send + Sync + 'static>(
     //  call to fail.
     unsafe { RegisterClassExW(&class) };
 
-    let parent_hwnd = match attr.parent_window() {
+    let parent_hwnd = match attr.parent_window {
         Some(RawWindowHandle::Win32(handle)) => Some(handle.hwnd.get() as HWND),
         Some(_) => unreachable!("Invalid raw window handle type for parent window"),
         _ => None,

@@ -325,20 +325,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "basic"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "image",
- "softbuffer",
- "tracing",
- "tracing-subscriber",
- "vello_cpu",
- "winit",
- "winit_tray",
-]
-
-[[package]]
 name = "bit_field"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -806,6 +792,20 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener",
  "pin-project-lite",
+]
+
+[[package]]
+name = "examples"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "image",
+ "softbuffer",
+ "tracing",
+ "tracing-subscriber",
+ "vello_cpu",
+ "winit",
+ "winit_tray",
 ]
 
 [[package]]
