@@ -6,8 +6,8 @@ mod util;
 #[cfg(feature = "menu")]
 pub mod menu;
 
-#[cfg(feature = "popup")]
-pub mod popup;
+#[cfg(feature = "context_menu")]
+pub mod context_menu;
 
 use std::{cell::Cell, ffi::OsStr, ptr, rc::Rc};
 

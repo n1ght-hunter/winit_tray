@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["menu", "popup"]
+default = ["menu", "context_menu"]
 menu = []
-popup = ["menu"]
+context_menu = ["menu"]
 
 [dependencies]
 winit.workspace = true

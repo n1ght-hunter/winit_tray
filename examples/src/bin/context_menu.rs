@@ -1,7 +1,6 @@
-//! Example demonstrating right-click context menus and popup windows.
+//! Example demonstrating right-click context menus.
 //!
-//! Right-click anywhere in the main window to see a context menu.
-//! Select "Show Popup" to create a floating popup window.
+//! Right-click anywhere in the window to see a context menu.
 
 use std::error::Error;
 use std::num::NonZeroU32;
@@ -15,7 +14,7 @@ use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
-use winit_tray::{MenuEntry, MenuItem, PopupAttributes, PopupManager, TrayManager};
+use winit_tray::{ContextMenuManager, MenuEntry, MenuItem, TrayManager};
 
 fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     let image = image::open(path)?.into_rgba8();
@@ -25,21 +24,14 @@ fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     Ok(Icon::from(icon))
 }
 
-/// Menu actions for the main window context menu.
+/// Menu actions for the context menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum WindowMenuAction {
-    ShowPopup,
+enum MenuAction {
+    Action1,
+    Action2,
     Settings,
     About,
     Exit,
-}
-
-/// Menu actions for the popup window context menu.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PopupMenuAction {
-    DoSomething,
-    AnotherAction,
-    ClosePopup,
 }
 
 /// Menu actions for the tray icon.
@@ -52,12 +44,8 @@ enum TrayMenuAction {
 struct App {
     window: Option<Rc<Box<dyn Window>>>,
     tray_manager: TrayManager<TrayMenuAction>,
-    popup_manager: PopupManager<PopupMenuAction>,
+    context_menu_manager: ContextMenuManager,
     tray: Option<Box<dyn winit_tray::Tray>>,
-    popup: Option<Box<dyn winit_tray::Popup>>,
-    // Track last click position for context menu
-    last_click_position: Option<PhysicalPosition<f64>>,
-    // Rendering state
     surface_context: Option<softbuffer::Context<Rc<Box<dyn Window>>>>,
     surface: Option<softbuffer::Surface<Rc<Box<dyn Window>>, Rc<Box<dyn Window>>>>,
 }
@@ -67,103 +55,40 @@ impl App {
         App {
             window: None,
             tray_manager: TrayManager::new(event_loop),
-            popup_manager: PopupManager::new(event_loop),
+            context_menu_manager: ContextMenuManager::new(),
             tray: None,
-            popup: None,
-            last_click_position: None,
             surface_context: None,
             surface: None,
         }
     }
 
     /// Show a context menu at the given position.
-    fn show_window_context_menu(&mut self, position: PhysicalPosition<f64>) {
-        let Some(window) = &self.window else {
+    fn show_context_menu(&self, event_loop: &dyn ActiveEventLoop, position: PhysicalPosition<f64>) {
+        let Some(window) = self.window.as_ref() else {
             return;
         };
 
         let menu = vec![
-            MenuEntry::Item(MenuItem::new(WindowMenuAction::ShowPopup, "Show Popup")),
+            MenuEntry::Item(MenuItem::new(MenuAction::Action1, "Action 1")),
+            MenuEntry::Item(MenuItem::new(MenuAction::Action2, "Action 2")),
             MenuEntry::Separator,
-            MenuEntry::Item(MenuItem::new(WindowMenuAction::Settings, "Settings")),
-            MenuEntry::Item(MenuItem::new(WindowMenuAction::About, "About")),
+            MenuEntry::Item(MenuItem::new(MenuAction::Settings, "Settings")),
+            MenuEntry::Item(MenuItem::new(MenuAction::About, "About")),
             MenuEntry::Separator,
-            MenuEntry::Item(MenuItem::new(WindowMenuAction::Exit, "Exit")),
+            MenuEntry::Item(MenuItem::new(MenuAction::Exit, "Exit")),
         ];
 
-        // Use the context menu helper to show the menu
-        let client_pos = PhysicalPosition::new(position.x as i32, position.y as i32);
-        if let Some(action) =
-            winit_tray::show_context_menu_for_window(window.as_ref(), &menu, client_pos)
-        {
-            self.handle_window_menu_action(action);
-        }
-    }
-
-    /// Handle a window context menu action.
-    fn handle_window_menu_action(&mut self, action: WindowMenuAction) {
-        match action {
-            WindowMenuAction::ShowPopup => {
-                if let Some(pos) = self.last_click_position {
-                    self.create_popup_at(pos);
+        let pos = PhysicalPosition::new(position.x as i32, position.y as i32);
+        if let Some(action) = self.context_menu_manager.show(window.as_ref(), &menu, pos) {
+            match action {
+                MenuAction::Action1 => info!("Action 1 clicked"),
+                MenuAction::Action2 => info!("Action 2 clicked"),
+                MenuAction::Settings => info!("Settings clicked"),
+                MenuAction::About => info!("About clicked"),
+                MenuAction::Exit => {
+                    info!("Exit clicked");
+                    event_loop.exit();
                 }
-            }
-            WindowMenuAction::Settings => {
-                info!("Settings clicked");
-            }
-            WindowMenuAction::About => {
-                info!("About clicked");
-            }
-            WindowMenuAction::Exit => {
-                info!("Exit clicked from window menu");
-                // We can't exit directly here, but we'll handle it in the event loop
-            }
-        }
-    }
-
-    /// Create a popup window at the given screen position.
-    fn create_popup_at(&mut self, position: PhysicalPosition<f64>) {
-        // Close existing popup if any
-        if let Some(popup) = self.popup.take() {
-            popup.close();
-        }
-
-        // Get window position to convert to screen coordinates
-        let screen_pos = if let Some(window) = &self.window {
-            if let Ok(outer_pos) = window.outer_position() {
-                PhysicalPosition::new(
-                    outer_pos.x + position.x as i32,
-                    outer_pos.y + position.y as i32 + 30, // Add offset for title bar
-                )
-            } else {
-                PhysicalPosition::new(position.x as i32, position.y as i32)
-            }
-        } else {
-            PhysicalPosition::new(position.x as i32, position.y as i32)
-        };
-
-        // Create popup menu
-        let popup_menu = vec![
-            MenuEntry::Item(MenuItem::new(PopupMenuAction::DoSomething, "Do Something")),
-            MenuEntry::Item(MenuItem::new(PopupMenuAction::AnotherAction, "Another Action")),
-            MenuEntry::Separator,
-            MenuEntry::Item(MenuItem::new(PopupMenuAction::ClosePopup, "Close Popup")),
-        ];
-
-        let attr = PopupAttributes::default()
-            .with_position(screen_pos)
-            .with_size(winit::dpi::PhysicalSize::new(200, 150))
-            .with_auto_dismiss_ms(Some(10000)) // Auto-close after 10 seconds
-            .with_close_on_click_outside(true)
-            .with_menu(popup_menu);
-
-        match self.popup_manager.create_popup(attr) {
-            Ok(popup) => {
-                info!(?screen_pos, "Popup created");
-                self.popup = Some(popup);
-            }
-            Err(e) => {
-                error!(%e, "Failed to create popup");
             }
         }
     }
@@ -182,14 +107,12 @@ impl App {
 
         let mut buffer = surface.buffer_mut().unwrap();
 
-        // Draw a nice gradient with a hint about right-clicking
         for y in 0..height {
             for x in 0..width {
                 let idx = y * width + x;
                 let r = (x as f32 / width as f32 * 100.0 + 50.0) as u8;
                 let g = (y as f32 / height as f32 * 100.0 + 80.0) as u8;
                 let b = 150;
-
                 buffer[idx] = u32::from_le_bytes([b, g, r, 0]);
             }
         }
@@ -200,7 +123,6 @@ impl App {
 
 impl ApplicationHandler for App {
     fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-        // Load the ferris icon
         let icon = match load_icon(Path::new("assets/ferris.png")) {
             Ok(icon) => Some(icon),
             Err(err) => {
@@ -209,7 +131,6 @@ impl ApplicationHandler for App {
             }
         };
 
-        // Build tray menu
         let tray_menu = vec![
             MenuEntry::Item(MenuItem::new(TrayMenuAction::ShowWindow, "Show Window")),
             MenuEntry::Separator,
@@ -217,7 +138,7 @@ impl ApplicationHandler for App {
         ];
 
         let tray_attributes = winit_tray::TrayAttributes::default()
-            .with_tooltip("Popup Menu Example")
+            .with_tooltip("Context Menu Example")
             .with_icon(icon.clone())
             .with_menu(tray_menu);
 
@@ -232,7 +153,7 @@ impl ApplicationHandler for App {
 
         let window_attributes = WindowAttributes::default()
             .with_window_icon(icon)
-            .with_title("Popup Menu Example - Right-click anywhere!");
+            .with_title("Context Menu Example - Right-click anywhere!");
 
         let window = match event_loop.create_window(window_attributes) {
             Ok(window) => Rc::new(window),
@@ -244,7 +165,6 @@ impl ApplicationHandler for App {
         };
 
         let size = window.surface_size();
-
         let context = softbuffer::Context::new(window.clone()).unwrap();
         let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
         surface
@@ -264,18 +184,9 @@ impl ApplicationHandler for App {
     }
 
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
-        // Handle tray events
         while let Ok((_id, event)) = self.tray_manager.try_recv() {
             match event {
-                winit_tray::TrayEvent::PointerButton {
-                    state,
-                    position,
-                    button,
-                } => {
-                    info!(?state, ?position, ?button, "tray icon clicked");
-                }
                 winit_tray::TrayEvent::MenuItemClicked { id } => {
-                    info!(?id, "tray menu item clicked");
                     match id {
                         TrayMenuAction::ShowWindow => {
                             if let Some(window) = &self.window {
@@ -291,46 +202,12 @@ impl ApplicationHandler for App {
                 _ => {}
             }
         }
-
-        // Handle popup events
-        while let Ok((id, event)) = self.popup_manager.try_recv() {
-            match event {
-                winit_tray::PopupEvent::Closed { reason } => {
-                    info!(?id, ?reason, "popup closed");
-                    self.popup = None;
-                }
-                winit_tray::PopupEvent::PointerButton {
-                    state,
-                    position,
-                    button,
-                } => {
-                    info!(?state, ?position, ?button, "popup clicked");
-                }
-                winit_tray::PopupEvent::MenuItemClicked { id: menu_id } => {
-                    info!(?menu_id, "popup menu item clicked");
-                    match menu_id {
-                        PopupMenuAction::DoSomething => {
-                            info!("Do Something clicked in popup");
-                        }
-                        PopupMenuAction::AnotherAction => {
-                            info!("Another Action clicked in popup");
-                        }
-                        PopupMenuAction::ClosePopup => {
-                            if let Some(popup) = &self.popup {
-                                popup.close();
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
     }
 
     fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                info!("close requested, stopping");
+                info!("close requested");
                 event_loop.exit();
             }
             WindowEvent::PointerButton {
@@ -339,15 +216,9 @@ impl ApplicationHandler for App {
                 position,
                 ..
             } => {
-                // Track click position for popup creation
-                if state == ElementState::Pressed {
-                    self.last_click_position = Some(position);
-                }
-
-                // Show context menu on right-click release
                 if state == ElementState::Released {
                     if let winit::event::ButtonSource::Mouse(MouseButton::Right) = button {
-                        self.show_window_context_menu(position);
+                        self.show_context_menu(event_loop, position);
                     }
                 }
             }
@@ -360,14 +231,12 @@ impl ApplicationHandler for App {
                         );
                     }
                 }
-
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
                 self.render();
-
                 if let Some(window) = &self.window {
                     window.pre_present_notify();
                 }
@@ -383,9 +252,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new()?;
     let app = App::new(&event_loop);
 
-    info!("Starting popup menu example...");
+    info!("Starting context menu example...");
     info!("Right-click anywhere in the window to see the context menu.");
-    info!("Select 'Show Popup' to create a floating popup window.");
 
     event_loop.run_app(app)?;
 

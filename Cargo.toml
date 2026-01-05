@@ -4,17 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["menu", "popup"]
+default = ["menu", "context_menu"]
 menu = [
     "winit_tray_windows/menu",
     "winit_tray_macos/menu",
     "winit_tray_linux/menu",
     "winit_tray_core/menu",
 ]
-popup = [
-    "winit_tray_windows/popup",
-    "winit_tray_macos/popup",
-    "winit_tray_core/popup",
+context_menu = [
+    "menu",
+    "winit_tray_windows/context_menu",
+    "winit_tray_macos/context_menu",
+    "winit_tray_core/context_menu",
 ]
 
 [dependencies]

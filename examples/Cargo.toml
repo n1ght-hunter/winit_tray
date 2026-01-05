@@ -5,9 +5,9 @@ edition = "2024"
 publish = false
 
 [features]
-default = ["menu", "popup"]
+default = ["menu", "context_menu"]
 menu = ["winit_tray/menu"]
-popup = ["winit_tray/popup"]
+context_menu = ["winit_tray/context_menu"]
 
 [dependencies]
 winit_tray.workspace = true
