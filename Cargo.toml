@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
+default = ["menu"]
 menu = [
     "winit_tray_windows/menu",
     "winit_tray_macos/menu",
@@ -19,13 +19,14 @@ anyhow.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winit_tray_windows.workspace = true
+winit_tray_windows = { workspace = true, default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-winit_tray_macos.workspace = true
+winit_tray_macos = { workspace = true, default-features = false }
+
 
 [target.'cfg(target_os = "linux")'.dependencies]
-winit_tray_linux.workspace = true
+winit_tray_linux = { workspace = true, default-features = false }
 
 
 # Workspace Configuration
@@ -44,9 +45,9 @@ members = [
 # Internal crates
 winit_tray = { path = ".", features = [] }
 winit_tray_core = { path = "winit_tray_core" }
-winit_tray_windows = { path = "winit_tray_windows" }
-winit_tray_macos = { path = "winit_tray_macos" }
-winit_tray_linux = { path = "winit_tray_linux" }
+winit_tray_windows = { path = "winit_tray_windows", default-features = false }
+winit_tray_macos = { path = "winit_tray_macos", default-features = false }
+winit_tray_linux = { path = "winit_tray_linux", default-features = false }
 
 # Winit ecosystem (pinned to beta)
 winit = "=0.31.0-beta.2"
