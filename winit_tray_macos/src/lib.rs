@@ -3,6 +3,9 @@ mod util;
 #[cfg(feature = "menu")]
 pub mod menu;
 
+#[cfg(feature = "context_menu")]
+pub mod context_menu;
+
 use objc2::rc::Retained;
 use objc2::{define_class, msg_send, AllocAnyThread, DeclaredClass, MainThreadMarker};
 use objc2_app_kit::{

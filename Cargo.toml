@@ -13,6 +13,7 @@ menu = [
 ]
 popup = [
     "winit_tray_windows/popup",
+    "winit_tray_macos/popup",
     "winit_tray_core/popup",
 ]
 
@@ -84,6 +85,8 @@ objc2-foundation = { version = "0.3", features = [
     "NSString",
     "NSArray",
     "NSData",
+    "NSTimer",
+    "NSNotification",
     "block2",
 ] }
 objc2-app-kit = { version = "0.3", features = [
@@ -103,6 +106,9 @@ objc2-app-kit = { version = "0.3", features = [
     "NSTrackingArea",
     "NSControl",
     "NSCell",
+    "NSWindow",
+    "NSPanel",
+    "NSScreen",
 ] }
 objc2-core-foundation = "0.3"
 

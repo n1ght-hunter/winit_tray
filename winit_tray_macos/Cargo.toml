@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = ["menu", "context_menu"]
 menu = ["winit_tray_core/menu"]
+context_menu = ["menu", "winit_tray_core/context_menu"]
 
 [dependencies]
 winit_tray_core.workspace = true

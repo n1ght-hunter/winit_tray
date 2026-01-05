@@ -12,9 +12,14 @@ use winit_tray_macos as platform_impl;
 #[cfg(target_os = "linux")]
 use winit_tray_linux as platform_impl;
 
-// Re-export context menu helper for regular windows (Windows only)
+// Re-export context menu helper for regular windows
 #[cfg(all(target_os = "windows", feature = "menu"))]
 pub use winit_tray_windows::menu::{
+    show_context_menu_for_window, show_context_menu_for_window_at_screen_pos,
+};
+
+#[cfg(all(target_os = "macos", feature = "menu"))]
+pub use winit_tray_macos::menu::{
     show_context_menu_for_window, show_context_menu_for_window_at_screen_pos,
 };
 
@@ -129,7 +134,7 @@ impl<T: Clone + Send + Sync + 'static> PopupManager<T> {
     /// Create a new popup window.
     ///
     /// The popup will be displayed at the position specified in the attributes.
-    #[cfg(target_os = "windows")]
+    #[cfg(feature = "popup")]
     pub fn create_popup(
         &self,
         attr: PopupAttributes<T>,
