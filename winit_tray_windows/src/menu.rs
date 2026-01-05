@@ -28,6 +28,7 @@ static DARK_MODE_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Enables or disables dark mode for context menus (Windows 10 1903+).
 pub fn set_dark_mode(enabled: bool) {
+    // TODO: This could probably be relaxed ordering
     DARK_MODE_ENABLED.store(enabled, Ordering::SeqCst);
 
     let uxtheme = encode_wide("uxtheme.dll");
@@ -54,6 +55,7 @@ pub fn set_dark_mode(enabled: bool) {
 }
 
 pub fn is_dark_mode_enabled() -> bool {
+    // TODO: This could probably be relaxed ordering
     DARK_MODE_ENABLED.load(Ordering::SeqCst)
 }
 
