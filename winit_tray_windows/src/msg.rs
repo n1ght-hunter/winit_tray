@@ -58,3 +58,9 @@ impl LazyMessageId {
 // Message sent by a `Window` when it wants to be destroyed by the main thread.
 // WPARAM and LPARAM are unused.
 pub(crate) static DESTROY_MSG_ID: LazyMessageId = LazyMessageId::new("WinitTray::DestroyMsg\0");
+
+// Message sent by a `Popup` when it wants to be closed.
+// WPARAM and LPARAM are unused.
+#[cfg(feature = "popup")]
+pub(crate) static POPUP_CLOSE_MSG_ID: LazyMessageId =
+    LazyMessageId::new("WinitTray::PopupCloseMsg\0");

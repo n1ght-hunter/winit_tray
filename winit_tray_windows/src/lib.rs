@@ -6,6 +6,9 @@ mod util;
 #[cfg(feature = "menu")]
 pub mod menu;
 
+#[cfg(feature = "popup")]
+pub mod popup;
+
 use std::{cell::Cell, ffi::OsStr, ptr, rc::Rc};
 
 use windows_sys::Win32::{

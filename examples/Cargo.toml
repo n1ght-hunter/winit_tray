@@ -5,8 +5,9 @@ edition = "2024"
 publish = false
 
 [features]
-default = []
+default = ["menu", "popup"]
 menu = ["winit_tray/menu"]
+popup = ["winit_tray/popup"]
 
 [dependencies]
 winit_tray.workspace = true
@@ -18,3 +19,6 @@ image.workspace = true
 softbuffer.workspace = true
 vello_cpu.workspace = true
 vello_common.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winit_tray_windows.workspace = true

@@ -11,6 +11,11 @@ pub mod menu;
 #[cfg(feature = "menu")]
 pub use menu::*;
 
+#[cfg(feature = "popup")]
+pub mod popup;
+#[cfg(feature = "popup")]
+pub use popup::*;
+
 pub mod tray_id;
 
 #[non_exhaustive]

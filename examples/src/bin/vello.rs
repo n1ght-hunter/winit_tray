@@ -228,7 +228,7 @@ impl ApplicationHandler for App {
         self.state = RenderState::Ready { window, surface };
     }
 
-    fn proxy_wake_up(&mut self, _: &dyn ActiveEventLoop) {
+    fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
         while let Ok((_id, event)) = self.tray_manager.try_recv() {
             match event {
                 winit_tray::TrayEvent::PointerButton {

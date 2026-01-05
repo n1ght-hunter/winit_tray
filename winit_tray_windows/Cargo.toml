@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["menu"]
+default = ["menu", "popup"]
 menu = ["winit_tray_core/menu"]
+popup = ["winit_tray_core/popup", "menu"]
 
 [dependencies]
 winit_tray_core.workspace = true
