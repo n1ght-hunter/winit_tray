@@ -5,12 +5,14 @@ edition = "2024"
 publish = false
 
 [features]
-default = ["menu", "context_menu"]
+default = ["menu", "context_menu", "menu_bar"]
 menu = ["winit_tray/menu"]
 context_menu = ["winit_tray/context_menu"]
+menu_bar = ["winit_tray/menu_bar", "winit_tray_core/menu_bar"]
 
 [dependencies]
 winit_tray.workspace = true
+winit_tray_core.workspace = true
 winit.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

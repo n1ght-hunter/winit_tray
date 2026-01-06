@@ -1,10 +1,10 @@
 //! Simple winit window example with basic rendering.
 
 use std::error::Error;
-use std::num::NonZeroU32;
 use std::path::Path;
 use std::rc::Rc;
 
+use examples::GradientRenderer;
 use tracing::{error, info, warn};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -44,9 +44,7 @@ struct App {
     window: Option<Rc<Box<dyn Window>>>,
     tray_manager: winit_tray::TrayManager<MenuId>,
     tray: Option<Box<dyn winit_tray::Tray>>,
-    // Rendering state
-    surface_context: Option<softbuffer::Context<Rc<Box<dyn Window>>>>,
-    surface: Option<softbuffer::Surface<Rc<Box<dyn Window>>, Rc<Box<dyn Window>>>>,
+    renderer: Option<GradientRenderer>,
 }
 
 impl App {
@@ -56,39 +54,8 @@ impl App {
             window: None,
             tray_manager,
             tray: None,
-            surface_context: None,
-            surface: None,
+            renderer: None,
         }
-    }
-
-    fn render(&mut self) {
-        let Some(surface) = &mut self.surface else {
-            return;
-        };
-        let Some(window) = &self.window else {
-            return;
-        };
-
-        let size = window.surface_size();
-        let width = size.width as usize;
-        let height = size.height as usize;
-
-        // Get buffer and draw gradient pattern
-        let mut buffer = surface.buffer_mut().unwrap();
-
-        for y in 0..height {
-            for x in 0..width {
-                let idx = y * width + x;
-                let r = (x as f32 / width as f32 * 255.0) as u8;
-                let g = (y as f32 / height as f32 * 255.0) as u8;
-                let b = 128;
-
-                // Create BGR0 color for softbuffer (little-endian 0RGB format)
-                buffer[idx] = u32::from_le_bytes([b, g, r, 0]);
-            }
-        }
-
-        buffer.present().unwrap();
     }
 }
 
@@ -154,21 +121,8 @@ impl ApplicationHandler for App {
             }
         };
 
-        // Get window size
-        let size = window.surface_size();
-
-        // Initialize softbuffer for displaying pixels
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
-        surface
-            .resize(
-                NonZeroU32::new(size.width).unwrap(),
-                NonZeroU32::new(size.height).unwrap(),
-            )
-            .unwrap();
-
-        self.surface_context = Some(context);
-        self.surface = Some(surface);
+        // Initialize renderer
+        self.renderer = Some(GradientRenderer::new(window.clone()));
 
         // Request an initial redraw so the window appears on Wayland
         window.request_redraw();
@@ -228,26 +182,17 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::SurfaceResized(size) => {
-                // Resize softbuffer surface
-                if size.width > 0 && size.height > 0 {
-                    if let Some(surface) = &mut self.surface {
-                        let _ = surface.resize(
-                            NonZeroU32::new(size.width).unwrap(),
-                            NonZeroU32::new(size.height).unwrap(),
-                        );
-                    }
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.resize(size.width, size.height);
                 }
-
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
-                // Render the scene
-                self.render();
-
-                // Notify that we're done presenting
-                if let Some(window) = &self.window {
+                if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
+                    let size = window.surface_size();
+                    renderer.render(size.width, size.height);
                     window.pre_present_notify();
                 }
             }
