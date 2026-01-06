@@ -7,6 +7,7 @@ edition = "2024"
 default = ["menu", "context_menu"]
 menu = []
 context_menu = ["menu"]
+menu_bar = ["menu"]
 
 [dependencies]
 winit.workspace = true

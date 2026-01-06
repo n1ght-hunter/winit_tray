@@ -7,6 +7,7 @@ edition = "2021"
 default = ["menu", "context_menu"]
 menu = ["winit_tray_core/menu"]
 context_menu = ["menu", "winit_tray_core/context_menu"]
+menu_bar = ["menu", "winit_tray_core/menu_bar"]
 
 [dependencies]
 winit_tray_core.workspace = true

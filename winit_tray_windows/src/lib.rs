@@ -9,6 +9,9 @@ pub mod menu;
 #[cfg(feature = "context_menu")]
 pub mod context_menu;
 
+#[cfg(feature = "menu_bar")]
+pub mod menu_bar;
+
 use std::{cell::Cell, ffi::OsStr, ptr, rc::Rc};
 
 use windows_sys::Win32::{

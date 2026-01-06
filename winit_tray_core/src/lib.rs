@@ -14,6 +14,9 @@ pub use menu::*;
 #[cfg(feature = "context_menu")]
 pub mod context_menu;
 
+#[cfg(feature = "menu_bar")]
+pub mod menu_bar;
+
 
 pub mod tray_id;
 

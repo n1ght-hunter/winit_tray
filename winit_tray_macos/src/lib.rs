@@ -6,6 +6,9 @@ pub mod menu;
 #[cfg(feature = "context_menu")]
 pub mod context_menu;
 
+#[cfg(feature = "menu_bar")]
+pub mod menu_bar;
+
 use objc2::rc::Retained;
 use objc2::{define_class, msg_send, AllocAnyThread, DeclaredClass, MainThreadMarker};
 use objc2_app_kit::{

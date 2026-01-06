@@ -17,6 +17,12 @@ context_menu = [
     "winit_tray_macos/context_menu",
     "winit_tray_core/context_menu",
 ]
+menu_bar = [
+    "menu",
+    "winit_tray_windows/menu_bar",
+    "winit_tray_macos/menu_bar",
+    "winit_tray_core/menu_bar",
+]
 
 [dependencies]
 winit.workspace = true
