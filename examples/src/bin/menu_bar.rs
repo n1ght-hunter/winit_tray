@@ -14,9 +14,9 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 #[cfg(feature = "menu_bar")]
-use winit_tray::{MenuBarManager, MenuEntry, MenuItem};
+use winit_extras::{MenuBarManager, MenuEntry, MenuItem};
 #[cfg(feature = "menu_bar")]
-use winit_tray_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopLevelMenu};
+use winit_extras_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopLevelMenu};
 
 /// Menu item identifiers using an enum for type safety.
 #[cfg(feature = "menu_bar")]
@@ -163,31 +163,28 @@ impl ApplicationHandler for App {
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
         #[cfg(feature = "menu_bar")]
         while let Ok((_id, event)) = self.menu_bar_manager.try_recv() {
-            match event {
-                MenuBarEvent::MenuItemClicked { id } => {
-                    info!(?id, "menu item clicked");
-                    match id {
-                        MenuAction::Quit => {
-                            info!("quit menu item clicked, stopping");
-                            event_loop.exit();
-                        }
-                        MenuAction::New => info!("New file"),
-                        MenuAction::Open => info!("Open file dialog would appear"),
-                        MenuAction::Save => info!("Saving file..."),
-                        MenuAction::SaveAs => info!("Save As dialog would appear"),
-                        MenuAction::Undo => info!("Undo action"),
-                        MenuAction::Redo => info!("Redo action"),
-                        MenuAction::Cut => info!("Cut to clipboard"),
-                        MenuAction::Copy => info!("Copy to clipboard"),
-                        MenuAction::Paste => info!("Paste from clipboard"),
-                        MenuAction::ZoomIn => info!("Zooming in..."),
-                        MenuAction::ZoomOut => info!("Zooming out..."),
-                        MenuAction::ResetZoom => info!("Zoom reset to 100%"),
-                        MenuAction::About => info!("About dialog would appear"),
-                        MenuAction::Documentation => info!("Opening documentation..."),
+            if let MenuBarEvent::MenuItemClicked { id } = event {
+                info!(?id, "menu item clicked");
+                match id {
+                    MenuAction::Quit => {
+                        info!("quit menu item clicked, stopping");
+                        event_loop.exit();
                     }
+                    MenuAction::New => info!("New file"),
+                    MenuAction::Open => info!("Open file dialog would appear"),
+                    MenuAction::Save => info!("Saving file..."),
+                    MenuAction::SaveAs => info!("Save As dialog would appear"),
+                    MenuAction::Undo => info!("Undo action"),
+                    MenuAction::Redo => info!("Redo action"),
+                    MenuAction::Cut => info!("Cut to clipboard"),
+                    MenuAction::Copy => info!("Copy to clipboard"),
+                    MenuAction::Paste => info!("Paste from clipboard"),
+                    MenuAction::ZoomIn => info!("Zooming in..."),
+                    MenuAction::ZoomOut => info!("Zooming out..."),
+                    MenuAction::ResetZoom => info!("Zoom reset to 100%"),
+                    MenuAction::About => info!("About dialog would appear"),
+                    MenuAction::Documentation => info!("Opening documentation..."),
                 }
-                _ => {} // Handle future event types
             }
         }
     }

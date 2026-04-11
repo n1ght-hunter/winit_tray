@@ -5,15 +5,15 @@
 use std::marker::PhantomData;
 
 use winit::event_loop::{EventLoop, EventLoopProxy};
-use winit_tray_core::menu_bar::{
+pub use winit_extras_core::menu_bar::{
     MenuBar, MenuBarAttributes, MenuBarEvent, MenuBarId, MenuBarProxy, TopLevelMenu,
 };
 
 #[cfg(target_os = "windows")]
-use winit_tray_windows::menu_bar as platform_menu_bar;
+use winit_extras_windows::menu_bar as platform_menu_bar;
 
 #[cfg(target_os = "macos")]
-use winit_tray_macos::menu_bar as platform_menu_bar;
+use winit_extras_macos::menu_bar as platform_menu_bar;
 
 /// Manager for creating and handling application menu bars.
 ///
@@ -23,7 +23,7 @@ use winit_tray_macos::menu_bar as platform_menu_bar;
 /// # Example
 ///
 /// ```ignore
-/// use winit_tray::{MenuBarManager, TopLevelMenu, MenuEntry, MenuItem};
+/// use winit_extras::{MenuBarManager, TopLevelMenu, MenuEntry, MenuItem};
 ///
 /// let menu_bar_manager = MenuBarManager::new(&event_loop);
 ///
@@ -124,9 +124,7 @@ impl<T: Clone + Send + Sync + 'static> MenuBarManager<T> {
     }
 
     /// Try to receive a menu bar event without blocking.
-    pub fn try_recv(
-        &self,
-    ) -> Result<(MenuBarId, MenuBarEvent<T>), std::sync::mpsc::TryRecvError> {
+    pub fn try_recv(&self) -> Result<(MenuBarId, MenuBarEvent<T>), std::sync::mpsc::TryRecvError> {
         self.receiver.try_recv()
     }
 }

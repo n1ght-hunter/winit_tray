@@ -1,0 +1,17 @@
+[package]
+name = "winit_extras_vello"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit_extras_core = { workspace = true, features = ["context_menu"] }
+winit.workspace = true
+rwh_06.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+vello_cpu.workspace = true
+softbuffer.workspace = true
+skrifa = "0.40"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys.workspace = true

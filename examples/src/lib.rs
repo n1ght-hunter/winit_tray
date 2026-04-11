@@ -1,15 +1,18 @@
-//! Common utilities for winit_tray examples.
+//! Common utilities for winit_extras examples.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use winit::window::Window;
 
+type WindowHandle = Rc<Box<dyn Window>>;
+type SoftbufferSurface = softbuffer::Surface<WindowHandle, WindowHandle>;
+
 /// Softbuffer-based renderer that draws a gradient pattern.
 pub struct GradientRenderer {
     #[allow(dead_code)]
-    context: softbuffer::Context<Rc<Box<dyn Window>>>,
-    surface: softbuffer::Surface<Rc<Box<dyn Window>>, Rc<Box<dyn Window>>>,
+    context: softbuffer::Context<WindowHandle>,
+    surface: SoftbufferSurface,
 }
 
 impl GradientRenderer {

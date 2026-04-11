@@ -1,44 +1,46 @@
 [package]
-name = "winit_tray"
+name = "winit_extras"
 version = "0.1.0"
 edition = "2024"
 
 [features]
 default = ["menu", "context_menu"]
 menu = [
-    "winit_tray_windows/menu",
-    "winit_tray_macos/menu",
-    "winit_tray_linux/menu",
-    "winit_tray_core/menu",
+    "winit_extras_windows/menu",
+    "winit_extras_macos/menu",
+    "winit_extras_linux/menu",
+    "winit_extras_core/menu",
 ]
 context_menu = [
     "menu",
-    "winit_tray_windows/context_menu",
-    "winit_tray_macos/context_menu",
-    "winit_tray_core/context_menu",
+    "winit_extras_windows/context_menu",
+    "winit_extras_macos/context_menu",
+    "winit_extras_core/context_menu",
 ]
 menu_bar = [
     "menu",
-    "winit_tray_windows/menu_bar",
-    "winit_tray_macos/menu_bar",
-    "winit_tray_core/menu_bar",
+    "winit_extras_windows/menu_bar",
+    "winit_extras_macos/menu_bar",
+    "winit_extras_core/menu_bar",
 ]
+vello_renderer = ["context_menu", "dep:winit_extras_vello"]
 
 [dependencies]
 winit.workspace = true
-winit_tray_core.workspace = true
+winit_extras_core.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+winit_extras_vello = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winit_tray_windows = { workspace = true, default-features = false }
+winit_extras_windows = { workspace = true, default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-winit_tray_macos = { workspace = true, default-features = false }
+winit_extras_macos = { workspace = true, default-features = false }
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
-winit_tray_linux = { workspace = true, default-features = false }
+winit_extras_linux = { workspace = true, default-features = false }
 
 
 # Workspace Configuration
@@ -46,20 +48,22 @@ winit_tray_linux = { workspace = true, default-features = false }
 [workspace]
 resolver = "3"
 members = [
-    "winit_tray_core",
-    "winit_tray_windows",
-    "winit_tray_macos",
-    "winit_tray_linux",
+    "winit_extras_core",
+    "winit_extras_windows",
+    "winit_extras_macos",
+    "winit_extras_linux",
+    "winit_extras_vello",
     "examples",
 ]
 
 [workspace.dependencies]
 # Internal crates
-winit_tray = { path = ".", features = [] }
-winit_tray_core = { path = "winit_tray_core" }
-winit_tray_windows = { path = "winit_tray_windows", default-features = false }
-winit_tray_macos = { path = "winit_tray_macos", default-features = false }
-winit_tray_linux = { path = "winit_tray_linux", default-features = false }
+winit_extras = { path = ".", features = [] }
+winit_extras_core = { path = "winit_extras_core" }
+winit_extras_windows = { path = "winit_extras_windows", default-features = false }
+winit_extras_macos = { path = "winit_extras_macos", default-features = false }
+winit_extras_linux = { path = "winit_extras_linux", default-features = false }
+winit_extras_vello = { path = "winit_extras_vello" }
 
 # Winit ecosystem (pinned to beta)
 winit = "=0.31.0-beta.2"
@@ -78,8 +82,8 @@ image = "0.25"
 png = "0.17"
 
 # Rendering (for examples)
-vello_cpu = "0.0.4"
-vello_common = "0.0.4"
+vello_cpu = "0.0.7"
+vello_common = "0.0.7"
 softbuffer = "0.4"
 
 # Windows platform

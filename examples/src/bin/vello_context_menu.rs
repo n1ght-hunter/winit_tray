@@ -1,4 +1,4 @@
-//! Example demonstrating native context menus on window right-click and tray right-click.
+//! Example demonstrating vello-rendered context menus on both windows and tray icons.
 
 use std::error::Error;
 use std::num::NonZeroU32;
@@ -15,6 +15,7 @@ use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
 use winit_extras::context_menu::ContextMenu;
 use winit_extras::{Event, Manager, MenuEntry, MenuItem};
+use winit_extras_vello::VelloMenuRenderer;
 
 type WindowHandle = Rc<Box<dyn Window>>;
 type SoftbufferSurface = softbuffer::Surface<WindowHandle, WindowHandle>;
@@ -29,10 +30,11 @@ fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Action {
-    Open,
+    ShowWindow,
+    Action1,
+    Action2,
     Settings,
     About,
-    ShowWindow,
     Exit,
 }
 
@@ -49,7 +51,9 @@ impl App {
     fn new(event_loop: &EventLoop) -> Self {
         App {
             window: None,
-            tray: Manager::new(event_loop),
+            tray: Manager::builder(event_loop)
+                .menu_renderer(VelloMenuRenderer::new())
+                .build(),
             tray_icon: None,
             window_menu: None,
             tray_menu: None,
@@ -94,7 +98,7 @@ impl ApplicationHandler for App {
         };
 
         let tray_attributes = winit_extras::TrayIconAttributes::default()
-            .with_tooltip("Context Menu Example")
+            .with_tooltip("Vello Context Menu Example")
             .with_icon(icon.clone());
 
         self.tray_icon = match self.tray.create_tray(tray_attributes) {
@@ -109,7 +113,7 @@ impl ApplicationHandler for App {
         let window = match event_loop.create_window(
             WindowAttributes::default()
                 .with_window_icon(icon)
-                .with_title("Context Menu Example - Right-click anywhere!"),
+                .with_title("Vello Context Menu - Right-click window or tray icon!"),
         ) {
             Ok(w) => Rc::new(w),
             Err(err) => {
@@ -130,11 +134,12 @@ impl ApplicationHandler for App {
             .unwrap();
         self.surface = Some(surface);
 
-        // Window context menu
+        // Window context menu (vello-rendered)
         let window_items = vec![
-            MenuEntry::Item(MenuItem::new(Action::Open, "Open")),
-            MenuEntry::Item(MenuItem::new(Action::Settings, "Settings").enabled(false)),
+            MenuEntry::Item(MenuItem::new(Action::Action1, "Action 1")),
+            MenuEntry::Item(MenuItem::new(Action::Action2, "Action 2")),
             MenuEntry::Separator,
+            MenuEntry::Item(MenuItem::new(Action::Settings, "Settings").enabled(false)),
             MenuEntry::Item(MenuItem::new(Action::About, "About")),
             MenuEntry::Separator,
             MenuEntry::Item(MenuItem::new(Action::Exit, "Exit")),
@@ -145,12 +150,12 @@ impl ApplicationHandler for App {
         {
             Ok(menu) => Some(menu),
             Err(err) => {
-                error!(%err, "failed to create window context menu");
+                error!(%err, "failed to create window menu");
                 None
             }
         };
 
-        // Tray context menu
+        // Tray context menu (vello-rendered)
         let tray_items = vec![
             MenuEntry::Item(MenuItem::new(Action::ShowWindow, "Show Window")),
             MenuEntry::Separator,
@@ -162,14 +167,14 @@ impl ApplicationHandler for App {
         {
             Ok(menu) => Some(menu),
             Err(err) => {
-                error!(%err, "failed to create tray context menu");
+                error!(%err, "failed to create tray menu");
                 None
             }
         };
 
         window.request_redraw();
         self.window = Some(window);
-        info!("Right-click in the window or on the tray icon!");
+        info!("Right-click in the window or on the tray icon for vello-rendered menus!");
     }
 
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -192,7 +197,8 @@ impl ApplicationHandler for App {
                             window.focus_window();
                         }
                     }
-                    Action::Open => info!("Open clicked"),
+                    Action::Action1 => info!("Action 1 clicked"),
+                    Action::Action2 => info!("Action 2 clicked"),
                     Action::Settings => info!("Settings clicked"),
                     Action::About => info!("About clicked"),
                     Action::Exit => {
@@ -261,7 +267,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let event_loop = EventLoop::new()?;
     let app = App::new(&event_loop);
-    info!("Starting context menu example...");
+    info!("Starting vello context menu example...");
     event_loop.run_app(app)?;
 
     Ok(())

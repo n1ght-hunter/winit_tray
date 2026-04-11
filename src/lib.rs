@@ -1,14 +1,12 @@
-pub use winit_tray_core::*;
+pub use winit_extras_core::*;
 
-mod tray;
-pub use tray::TrayManager;
-
-#[cfg(all(feature = "context_menu", any(target_os = "windows", target_os = "macos")))]
-mod context_menu;
-#[cfg(all(feature = "context_menu", any(target_os = "windows", target_os = "macos")))]
-pub use context_menu::ContextMenuManager;
+mod manager;
+pub use manager::{Manager, ManagerBuilder};
 
 #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
-mod menu_bar;
+pub mod menu_bar;
 #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 pub use menu_bar::MenuBarManager;
+
+#[cfg(feature = "vello_renderer")]
+pub use winit_extras_vello;

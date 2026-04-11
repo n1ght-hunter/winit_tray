@@ -1,4 +1,4 @@
-//! Simple winit window example with basic rendering.
+//! Simple winit window example with a tray icon.
 
 use std::error::Error;
 use std::path::Path;
@@ -7,12 +7,10 @@ use std::rc::Rc;
 use examples::GradientRenderer;
 use tracing::{error, info, warn};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
-#[cfg(feature = "menu")]
-use winit_tray::{MenuEntry, MenuItem, Submenu};
 
 fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     let image = image::open(path)?.into_rgba8();
@@ -22,37 +20,18 @@ fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     Ok(Icon::from(icon))
 }
 
-/// Menu item identifiers using an enum for type safety.
-#[cfg(feature = "menu")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MenuAction {
-    Open,
-    Settings,
-    DarkMode,
-    OptionA,
-    OptionB,
-    Exit,
-}
-
-#[cfg(feature = "menu")]
-type MenuId = MenuAction;
-
-#[cfg(not(feature = "menu"))]
-type MenuId = ();
-
 struct App {
     window: Option<Rc<Box<dyn Window>>>,
-    tray_manager: winit_tray::TrayManager<MenuId>,
-    tray: Option<Box<dyn winit_tray::Tray>>,
+    tray_manager: winit_extras::Manager,
+    tray: Option<Box<dyn winit_extras::TrayIcon>>,
     renderer: Option<GradientRenderer>,
 }
 
 impl App {
     fn new(event_loop: &EventLoop) -> Self {
-        let tray_manager = winit_tray::TrayManager::new(event_loop);
         App {
             window: None,
-            tray_manager,
+            tray_manager: winit_extras::Manager::new(event_loop),
             tray: None,
             renderer: None,
         }
@@ -61,7 +40,6 @@ impl App {
 
 impl ApplicationHandler for App {
     fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-        // Load the ferris icon
         let icon = match load_icon(Path::new("assets/ferris.png")) {
             Ok(icon) => Some(icon),
             Err(err) => {
@@ -70,32 +48,7 @@ impl ApplicationHandler for App {
             }
         };
 
-        // Build the context menu (when menu feature is enabled)
-        #[cfg(feature = "menu")]
-        let menu = vec![
-            MenuEntry::Item(MenuItem::new(MenuAction::Open, "Open")),
-            MenuEntry::Item(MenuItem::new(MenuAction::Settings, "Settings").enabled(false)),
-            MenuEntry::Separator,
-            MenuEntry::Item(MenuItem::new(MenuAction::DarkMode, "Dark Mode").checked(false)),
-            MenuEntry::Submenu(Submenu::new(
-                "Options",
-                vec![
-                    MenuEntry::Item(MenuItem::new(MenuAction::OptionA, "Option A").checked(true)),
-                    MenuEntry::Item(MenuItem::new(MenuAction::OptionB, "Option B").checked(false)),
-                ],
-            )),
-            MenuEntry::Separator,
-            MenuEntry::Item(MenuItem::new(MenuAction::Exit, "Exit")),
-        ];
-
-        #[cfg(feature = "menu")]
-        let tray_attributes = winit_tray::TrayAttributes::default()
-            .with_tooltip("Winit Tray Example")
-            .with_icon(icon.clone())
-            .with_menu(menu);
-
-        #[cfg(not(feature = "menu"))]
-        let tray_attributes = winit_tray::TrayAttributes::default()
+        let tray_attributes = winit_extras::TrayIconAttributes::default()
             .with_tooltip("Winit Tray Example")
             .with_icon(icon.clone());
 
@@ -121,55 +74,27 @@ impl ApplicationHandler for App {
             }
         };
 
-        // Initialize renderer
         self.renderer = Some(GradientRenderer::new(window.clone()));
-
-        // Request an initial redraw so the window appears on Wayland
         window.request_redraw();
         self.window = Some(window);
     }
 
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
-        while let Ok((_id, event)) = self.tray_manager.try_recv() {
+        while let Ok(event) = self.tray_manager.try_recv() {
             match event {
-                winit_tray::TrayEvent::PointerButton {
-                    state,
-                    position,
-                    button,
+                winit_extras::Event::PointerButton {
+                    state: ElementState::Released,
+                    button: winit::event::ButtonSource::Mouse(MouseButton::Left),
+                    ..
                 } => {
-                    info!(?state, ?position, ?button, "tray icon clicked");
-                }
-                #[cfg(feature = "menu")]
-                winit_tray::TrayEvent::MenuItemClicked { id } => {
-                    info!(?id, "menu item clicked");
-                    match id {
-                        MenuAction::DarkMode => {
-                            // Toggle dark mode (Windows only)
-                            #[cfg(target_os = "windows")]
-                            {
-                                let current = winit_tray_windows::menu::is_dark_mode_enabled();
-                                winit_tray_windows::menu::set_dark_mode(!current);
-                                info!(dark_mode = !current, "dark mode toggled");
-                            }
-                            #[cfg(not(target_os = "windows"))]
-                            {
-                                info!("dark mode toggle not implemented on this platform");
-                            }
-                        }
-                        MenuAction::Exit => {
-                            info!("exit menu item clicked, stopping");
-                            event_loop.exit();
-                        }
-                        MenuAction::Open => {
-                            info!("open clicked");
-                        }
-                        MenuAction::OptionA | MenuAction::OptionB => {
-                            info!(?id, "option selected");
-                        }
-                        _ => {}
+                    info!("tray icon left-clicked");
+                    if let Some(window) = &self.window {
+                        window.focus_window();
                     }
                 }
-                #[allow(unreachable_patterns)]
+                winit_extras::Event::PointerButton { state, button, .. } => {
+                    info!(?state, ?button, "tray icon clicked");
+                }
                 _ => {}
             }
         }
@@ -205,10 +130,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
     let event_loop = EventLoop::new()?;
-
     let app = App::new(&event_loop);
-
-    // For alternative loop run options see `pump_events` and `run_on_demand` examples.
     event_loop.run_app(app)?;
 
     Ok(())

@@ -1,4 +1,4 @@
-//! Full example demonstrating all winit_tray features:
+//! Full example demonstrating all winit_extras features:
 //! - System tray icon with context menu
 //! - Application menu bar
 //! - Window context menu (right-click)
@@ -15,14 +15,16 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use winit_tray::{MenuEntry, MenuItem, Submenu, TrayManager};
-use winit_tray_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopLevelMenu};
+use winit_extras::{Manager, MenuEntry, MenuItem, Submenu};
+use winit_extras_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopLevelMenu};
 
 #[cfg(feature = "menu_bar")]
-use winit_tray::MenuBarManager;
+use winit_extras::MenuBarManager;
 
 #[cfg(feature = "context_menu")]
-use winit_tray::ContextMenuManager;
+use std::sync::Arc;
+#[cfg(feature = "context_menu")]
+use winit_extras::context_menu::ContextMenu;
 
 fn load_icon(path: &Path) -> Result<Icon, Box<dyn Error>> {
     let image = image::open(path)?.into_rgba8();
@@ -81,6 +83,10 @@ enum MenuBarAction {
     ShowSidebar,
     ShowToolbar,
     ShowStatusBar,
+    // View > Theme submenu
+    ThemeSystem,
+    ThemeLight,
+    ThemeDark,
     // Help menu
     About,
     Documentation,
@@ -104,20 +110,40 @@ enum ContextAction {
     SortBySize,
 }
 
+fn map_menu_entry<A: Clone, B: Clone>(entry: MenuEntry<A>, f: fn(A) -> B) -> MenuEntry<B> {
+    match entry {
+        MenuEntry::Item(item) => {
+            MenuEntry::Item(MenuItem::new(f(item.id), &item.label).enabled(item.enabled))
+        }
+        MenuEntry::Separator => MenuEntry::Separator,
+        MenuEntry::Submenu(sub) => MenuEntry::Submenu(Submenu::new(
+            &sub.label,
+            sub.items
+                .into_iter()
+                .map(|e| map_menu_entry(e, f))
+                .collect(),
+        )),
+    }
+}
+
+/// Unified action type for tray and context menus.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AppAction {
+    Tray(TrayAction),
+    Context(ContextAction),
+}
+
 struct App {
     window: Option<Rc<Box<dyn Window>>>,
     renderer: Option<GradientRenderer>,
-    // Tray
-    tray_manager: TrayManager<TrayAction>,
-    tray: Option<Box<dyn winit_tray::Tray>>,
-    // Menu bar
+    tray: Manager<AppAction>,
+    tray_icon: Option<Box<dyn winit_extras::TrayIcon>>,
     #[cfg(feature = "menu_bar")]
     menu_bar_manager: MenuBarManager<MenuBarAction>,
     #[cfg(feature = "menu_bar")]
     _menu_bar: Option<Box<dyn MenuBar>>,
-    // Context menu
     #[cfg(feature = "context_menu")]
-    context_menu_manager: ContextMenuManager,
+    context_menu: Option<Arc<dyn ContextMenu>>,
 }
 
 impl App {
@@ -125,14 +151,14 @@ impl App {
         App {
             window: None,
             renderer: None,
-            tray_manager: TrayManager::new(event_loop),
-            tray: None,
+            tray: Manager::new(event_loop),
+            tray_icon: None,
             #[cfg(feature = "menu_bar")]
             menu_bar_manager: MenuBarManager::new(event_loop),
             #[cfg(feature = "menu_bar")]
             _menu_bar: None,
             #[cfg(feature = "context_menu")]
-            context_menu_manager: ContextMenuManager::new(),
+            context_menu: None,
         }
     }
 
@@ -170,17 +196,29 @@ impl App {
                         vec![
                             MenuEntry::Item(MenuItem::new(MenuBarAction::ExportPng, "PNG Image")),
                             MenuEntry::Item(MenuItem::new(MenuBarAction::ExportJpg, "JPEG Image")),
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::ExportPdf, "PDF Document")),
+                            MenuEntry::Item(MenuItem::new(
+                                MenuBarAction::ExportPdf,
+                                "PDF Document",
+                            )),
                         ],
                     )),
                     MenuEntry::Submenu(Submenu::new(
                         "Recent Files",
                         vec![
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::RecentFile1, "document.txt")),
+                            MenuEntry::Item(MenuItem::new(
+                                MenuBarAction::RecentFile1,
+                                "document.txt",
+                            )),
                             MenuEntry::Item(MenuItem::new(MenuBarAction::RecentFile2, "image.png")),
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::RecentFile3, "project.rs")),
+                            MenuEntry::Item(MenuItem::new(
+                                MenuBarAction::RecentFile3,
+                                "project.rs",
+                            )),
                             MenuEntry::Separator,
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::ClearRecent, "Clear Recent")),
+                            MenuEntry::Item(MenuItem::new(
+                                MenuBarAction::ClearRecent,
+                                "Clear Recent",
+                            )),
                         ],
                     )),
                     MenuEntry::Separator,
@@ -202,7 +240,10 @@ impl App {
                         vec![
                             MenuEntry::Item(MenuItem::new(MenuBarAction::Find, "Find...")),
                             MenuEntry::Item(MenuItem::new(MenuBarAction::FindNext, "Find Next")),
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::FindPrevious, "Find Previous")),
+                            MenuEntry::Item(MenuItem::new(
+                                MenuBarAction::FindPrevious,
+                                "Find Previous",
+                            )),
                             MenuEntry::Separator,
                             MenuEntry::Item(MenuItem::new(MenuBarAction::Replace, "Replace...")),
                         ],
@@ -218,9 +259,27 @@ impl App {
                     MenuEntry::Submenu(Submenu::new(
                         "Panels",
                         vec![
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::ShowSidebar, "Sidebar").checked(true)),
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::ShowToolbar, "Toolbar").checked(true)),
-                            MenuEntry::Item(MenuItem::new(MenuBarAction::ShowStatusBar, "Status Bar").checked(false)),
+                            MenuEntry::Item(
+                                MenuItem::new(MenuBarAction::ShowSidebar, "Sidebar").checked(true),
+                            ),
+                            MenuEntry::Item(
+                                MenuItem::new(MenuBarAction::ShowToolbar, "Toolbar").checked(true),
+                            ),
+                            MenuEntry::Item(
+                                MenuItem::new(MenuBarAction::ShowStatusBar, "Status Bar")
+                                    .checked(false),
+                            ),
+                        ],
+                    )),
+                    MenuEntry::Submenu(Submenu::new(
+                        "Theme",
+                        vec![
+                            MenuEntry::Item(MenuItem::new(
+                                MenuBarAction::ThemeSystem,
+                                "Follow System",
+                            )),
+                            MenuEntry::Item(MenuItem::new(MenuBarAction::ThemeLight, "Light")),
+                            MenuEntry::Item(MenuItem::new(MenuBarAction::ThemeDark, "Dark")),
                         ],
                     )),
                     MenuEntry::Separator,
@@ -231,7 +290,10 @@ impl App {
                 "Help",
                 vec![
                     MenuEntry::Item(MenuItem::new(MenuBarAction::Documentation, "Documentation")),
-                    MenuEntry::Item(MenuItem::new(MenuBarAction::CheckUpdates, "Check for Updates")),
+                    MenuEntry::Item(MenuItem::new(
+                        MenuBarAction::CheckUpdates,
+                        "Check for Updates",
+                    )),
                     MenuEntry::Separator,
                     MenuEntry::Item(MenuItem::new(MenuBarAction::About, "About")),
                 ],
@@ -270,25 +332,27 @@ impl App {
 
     #[cfg(feature = "context_menu")]
     fn show_context_menu(&self, x: i32, y: i32) {
-        if let Some(window) = &self.window {
-            let menu = Self::build_context_menu();
+        if let Some(context_menu) = &self.context_menu {
             let position = winit::dpi::PhysicalPosition::new(x, y);
-            if let Some(action) = self.context_menu_manager.show(window.as_ref(), &menu, position) {
-                match action {
-                    ContextAction::Refresh => info!("Context menu: Refresh"),
-                    ContextAction::Properties => info!("Context menu: Properties"),
-                    ContextAction::Copy => info!("Context menu: Copy"),
-                    ContextAction::Paste => info!("Context menu: Paste"),
-                    // View submenu
-                    ContextAction::ViewLarge => info!("Context menu: View Large Icons"),
-                    ContextAction::ViewMedium => info!("Context menu: View Medium Icons"),
-                    ContextAction::ViewSmall => info!("Context menu: View Small Icons"),
-                    // Sort submenu
-                    ContextAction::SortByName => info!("Context menu: Sort by Name"),
-                    ContextAction::SortByDate => info!("Context menu: Sort by Date"),
-                    ContextAction::SortBySize => info!("Context menu: Sort by Size"),
-                }
-            }
+            context_menu.show(position);
+        }
+    }
+
+    #[cfg(feature = "context_menu")]
+    fn handle_context_menu_action(&self, action: ContextAction) {
+        match action {
+            ContextAction::Refresh => info!("Context menu: Refresh"),
+            ContextAction::Properties => info!("Context menu: Properties"),
+            ContextAction::Copy => info!("Context menu: Copy"),
+            ContextAction::Paste => info!("Context menu: Paste"),
+            // View submenu
+            ContextAction::ViewLarge => info!("Context menu: View Large Icons"),
+            ContextAction::ViewMedium => info!("Context menu: View Medium Icons"),
+            ContextAction::ViewSmall => info!("Context menu: View Small Icons"),
+            // Sort submenu
+            ContextAction::SortByName => info!("Context menu: Sort by Name"),
+            ContextAction::SortByDate => info!("Context menu: Sort by Date"),
+            ContextAction::SortBySize => info!("Context menu: Sort by Size"),
         }
     }
 }
@@ -304,13 +368,12 @@ impl ApplicationHandler for App {
             }
         };
 
-        // Create the system tray with context menu
-        let tray_attributes = winit_tray::TrayAttributes::default()
+        // Create the system tray
+        let tray_attributes = winit_extras::TrayIconAttributes::default()
             .with_tooltip("Full Example - Right-click for menu")
-            .with_icon(icon.clone())
-            .with_menu(Self::build_tray_menu());
+            .with_icon(icon.clone());
 
-        self.tray = match self.tray_manager.create_tray(tray_attributes) {
+        self.tray_icon = match self.tray.create_tray(tray_attributes) {
             Ok(tray) => {
                 info!("System tray created");
                 Some(tray)
@@ -334,6 +397,15 @@ impl ApplicationHandler for App {
                 return;
             }
         };
+
+        // Set initial dark mode for the window's menu bar based on system preference
+        #[cfg(target_os = "windows")]
+        {
+            use winit_extras_windows::menu::{
+                is_system_dark_mode, set_window_menu_dark_mode_for_window,
+            };
+            set_window_menu_dark_mode_for_window(window.as_ref(), is_system_dark_mode());
+        }
 
         // Create the menu bar
         #[cfg(feature = "menu_bar")]
@@ -359,6 +431,27 @@ impl ApplicationHandler for App {
             }
         }
 
+        // Create the context menu
+        #[cfg(feature = "context_menu")]
+        {
+            let ctx_items: Vec<MenuEntry<AppAction>> = Self::build_context_menu()
+                .into_iter()
+                .map(|e| map_menu_entry(e, AppAction::Context))
+                .collect();
+            match self
+                .tray
+                .create_menu(event_loop, window.as_ref(), ctx_items)
+            {
+                Ok(menu) => {
+                    info!("Context menu created");
+                    self.context_menu = Some(menu);
+                }
+                Err(err) => {
+                    error!(%err, "failed to create context menu");
+                }
+            }
+        }
+
         // Initialize renderer
         self.renderer = Some(GradientRenderer::new(window.clone()));
 
@@ -372,40 +465,36 @@ impl ApplicationHandler for App {
     }
 
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
-        // Handle tray events
-        while let Ok((_id, event)) = self.tray_manager.try_recv() {
+        // Handle tray + context menu events (unified)
+        while let Ok(event) = self.tray.try_recv() {
             match event {
-                winit_tray::TrayEvent::PointerButton { state, button, .. } => {
+                winit_extras::Event::PointerButton { state, button, .. } => {
                     info!(?state, ?button, "Tray icon clicked");
                 }
-                winit_tray::TrayEvent::MenuItemClicked { id } => {
-                    info!(?id, "Tray menu item clicked");
-                    match id {
-                        TrayAction::ShowWindow => {
-                            if let Some(window) = &self.window {
-                                window.set_visible(true);
-                                info!("Window shown");
+                winit_extras::Event::MenuItemClicked { id } => match id {
+                    AppAction::Tray(tray_action) => {
+                        info!(?tray_action, "Tray menu item clicked");
+                        match tray_action {
+                            TrayAction::ShowWindow => {
+                                if let Some(window) = &self.window {
+                                    window.set_visible(true);
+                                }
                             }
-                        }
-                        TrayAction::HideWindow => {
-                            if let Some(window) = &self.window {
-                                window.set_visible(false);
-                                info!("Window hidden");
+                            TrayAction::HideWindow => {
+                                if let Some(window) = &self.window {
+                                    window.set_visible(false);
+                                }
                             }
-                        }
-                        TrayAction::Settings => {
-                            info!("Settings (disabled)");
-                        }
-                        // Theme submenu
-                        TrayAction::ThemeLight => info!("Theme: Light"),
-                        TrayAction::ThemeDark => info!("Theme: Dark"),
-                        TrayAction::ThemeSystem => info!("Theme: System Default"),
-                        TrayAction::Exit => {
-                            info!("Exiting...");
-                            event_loop.exit();
+                            TrayAction::Exit => {
+                                event_loop.exit();
+                            }
+                            _ => info!("Tray action: {:?}", tray_action),
                         }
                     }
-                }
+                    AppAction::Context(ctx_action) => {
+                        self.handle_context_menu_action(ctx_action);
+                    }
+                },
                 _ => {}
             }
         }
@@ -413,63 +502,107 @@ impl ApplicationHandler for App {
         // Handle menu bar events
         #[cfg(feature = "menu_bar")]
         while let Ok((_id, event)) = self.menu_bar_manager.try_recv() {
-            match event {
-                MenuBarEvent::MenuItemClicked { id } => {
-                    info!(?id, "Menu bar item clicked");
-                    match id {
-                        MenuBarAction::Quit => {
-                            info!("Quit from menu bar");
-                            event_loop.exit();
-                        }
-                        MenuBarAction::New => info!("New file"),
-                        MenuBarAction::Open => info!("Open file"),
-                        MenuBarAction::Save => info!("Save file"),
-                        // Export submenu
-                        MenuBarAction::ExportPng => info!("Export as PNG"),
-                        MenuBarAction::ExportJpg => info!("Export as JPEG"),
-                        MenuBarAction::ExportPdf => info!("Export as PDF"),
-                        // Recent Files submenu
-                        MenuBarAction::RecentFile1 => info!("Open recent: document.txt"),
-                        MenuBarAction::RecentFile2 => info!("Open recent: image.png"),
-                        MenuBarAction::RecentFile3 => info!("Open recent: project.rs"),
-                        MenuBarAction::ClearRecent => info!("Clear recent files"),
-                        // Edit menu
-                        MenuBarAction::Undo => info!("Undo"),
-                        MenuBarAction::Redo => info!("Redo"),
-                        MenuBarAction::Cut => info!("Cut"),
-                        MenuBarAction::Copy => info!("Copy"),
-                        MenuBarAction::Paste => info!("Paste"),
-                        // Find submenu
-                        MenuBarAction::Find => info!("Find..."),
-                        MenuBarAction::FindNext => info!("Find next"),
-                        MenuBarAction::FindPrevious => info!("Find previous"),
-                        MenuBarAction::Replace => info!("Replace..."),
-                        // View menu
-                        MenuBarAction::ZoomIn => info!("Zoom in"),
-                        MenuBarAction::ZoomOut => info!("Zoom out"),
-                        // Panels submenu
-                        MenuBarAction::ShowSidebar => info!("Toggle sidebar"),
-                        MenuBarAction::ShowToolbar => info!("Toggle toolbar"),
-                        MenuBarAction::ShowStatusBar => info!("Toggle status bar"),
-                        MenuBarAction::Fullscreen => {
+            if let MenuBarEvent::MenuItemClicked { id } = event {
+                info!(?id, "Menu bar item clicked");
+                match id {
+                    MenuBarAction::Quit => {
+                        info!("Quit from menu bar");
+                        event_loop.exit();
+                    }
+                    MenuBarAction::New => info!("New file"),
+                    MenuBarAction::Open => info!("Open file"),
+                    MenuBarAction::Save => info!("Save file"),
+                    MenuBarAction::ExportPng => info!("Export as PNG"),
+                    MenuBarAction::ExportJpg => info!("Export as JPEG"),
+                    MenuBarAction::ExportPdf => info!("Export as PDF"),
+                    MenuBarAction::RecentFile1 => info!("Open recent: document.txt"),
+                    MenuBarAction::RecentFile2 => info!("Open recent: image.png"),
+                    MenuBarAction::RecentFile3 => info!("Open recent: project.rs"),
+                    MenuBarAction::ClearRecent => info!("Clear recent files"),
+                    MenuBarAction::Undo => info!("Undo"),
+                    MenuBarAction::Redo => info!("Redo"),
+                    MenuBarAction::Cut => info!("Cut"),
+                    MenuBarAction::Copy => info!("Copy"),
+                    MenuBarAction::Paste => info!("Paste"),
+                    MenuBarAction::Find => info!("Find..."),
+                    MenuBarAction::FindNext => info!("Find next"),
+                    MenuBarAction::FindPrevious => info!("Find previous"),
+                    MenuBarAction::Replace => info!("Replace..."),
+                    MenuBarAction::ZoomIn => info!("Zoom in"),
+                    MenuBarAction::ZoomOut => info!("Zoom out"),
+                    MenuBarAction::ShowSidebar => info!("Toggle sidebar"),
+                    MenuBarAction::ShowToolbar => info!("Toggle toolbar"),
+                    MenuBarAction::ShowStatusBar => info!("Toggle status bar"),
+                    MenuBarAction::ThemeSystem => {
+                        #[cfg(target_os = "windows")]
+                        {
+                            use winit_extras_windows::menu::{
+                                DarkModePreference, is_system_dark_mode, set_dark_mode_preference,
+                                set_window_menu_dark_mode_for_window,
+                            };
+                            set_dark_mode_preference(DarkModePreference::System);
                             if let Some(window) = &self.window {
-                                let is_fullscreen = window.fullscreen().is_some();
-                                if is_fullscreen {
-                                    window.set_fullscreen(None);
-                                } else {
-                                    window.set_fullscreen(Some(
-                                        winit::monitor::Fullscreen::Borderless(None),
-                                    ));
-                                }
+                                set_window_menu_dark_mode_for_window(
+                                    window.as_ref(),
+                                    is_system_dark_mode(),
+                                );
                             }
                         }
-                        // Help menu
-                        MenuBarAction::About => info!("About: winit_tray full example"),
-                        MenuBarAction::Documentation => info!("Opening documentation..."),
-                        MenuBarAction::CheckUpdates => info!("Checking for updates..."),
+                        if let Some(window) = &self.window {
+                            window.set_theme(None); // Follow system
+                        }
+                        info!("Theme: Follow System");
                     }
+                    MenuBarAction::ThemeLight => {
+                        #[cfg(target_os = "windows")]
+                        {
+                            use winit_extras_windows::menu::{
+                                DarkModePreference, set_dark_mode_preference,
+                                set_window_menu_dark_mode_for_window,
+                            };
+                            set_dark_mode_preference(DarkModePreference::ForceLight);
+                            if let Some(window) = &self.window {
+                                set_window_menu_dark_mode_for_window(window.as_ref(), false);
+                            }
+                        }
+                        if let Some(window) = &self.window {
+                            window.set_theme(Some(winit::window::Theme::Light));
+                        }
+                        info!("Theme: Light");
+                    }
+                    MenuBarAction::ThemeDark => {
+                        #[cfg(target_os = "windows")]
+                        {
+                            use winit_extras_windows::menu::{
+                                DarkModePreference, set_dark_mode_preference,
+                                set_window_menu_dark_mode_for_window,
+                            };
+                            set_dark_mode_preference(DarkModePreference::ForceDark);
+                            if let Some(window) = &self.window {
+                                set_window_menu_dark_mode_for_window(window.as_ref(), true);
+                            }
+                        }
+                        if let Some(window) = &self.window {
+                            window.set_theme(Some(winit::window::Theme::Dark));
+                        }
+                        info!("Theme: Dark");
+                    }
+                    MenuBarAction::Fullscreen => {
+                        if let Some(window) = &self.window {
+                            let is_fullscreen = window.fullscreen().is_some();
+                            if is_fullscreen {
+                                window.set_fullscreen(None);
+                            } else {
+                                window.set_fullscreen(Some(
+                                    winit::monitor::Fullscreen::Borderless(None),
+                                ));
+                            }
+                        }
+                    }
+                    MenuBarAction::About => info!("About: winit_extras full example"),
+                    MenuBarAction::Documentation => info!("Opening documentation..."),
+                    MenuBarAction::CheckUpdates => info!("Checking for updates..."),
                 }
-                _ => {}
             }
         }
     }
@@ -498,14 +631,12 @@ impl ApplicationHandler for App {
             // Handle right-click for context menu
             WindowEvent::PointerButton {
                 state: ElementState::Released,
-                button,
+                button: winit::event::ButtonSource::Mouse(MouseButton::Right),
                 position,
                 ..
             } => {
-                if let winit::event::ButtonSource::Mouse(MouseButton::Right) = button {
-                    #[cfg(feature = "context_menu")]
-                    self.show_context_menu(position.x as i32, position.y as i32);
-                }
+                #[cfg(feature = "context_menu")]
+                self.show_context_menu(position.x as i32, position.y as i32);
             }
             _ => (),
         }
@@ -516,6 +647,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
     info!("Starting full example with all features...");
+
+    // Initialize dark mode early, before creating any windows or menus
+    #[cfg(target_os = "windows")]
+    {
+        winit_extras_windows::menu::init_dark_mode();
+        info!("Dark mode initialized");
+    }
 
     let event_loop = EventLoop::new()?;
     let app = App::new(&event_loop);
