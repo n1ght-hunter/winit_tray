@@ -1,0 +1,35 @@
+[env]
+SDKROOT = "tools/MacOSX14.0.sdk"
+
+[tasks.example]
+description = "run an example"
+usage = '''
+arg "<example>" help="Example to run" default="basic"
+'''
+run = "cargo run -p examples --bin ${usage_example}"
+
+[tasks.fmt]
+description = "check formatting"
+run = "cargo fmt --all -- --check"
+
+[tasks."check:windows"]
+description = "clippy for native windows target"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
+
+[tasks."check:linux"]
+description = "zigbuild + clippy for x86_64-unknown-linux-gnu"
+run = [
+    "cargo zigbuild --target x86_64-unknown-linux-gnu --workspace",
+    "cargo clippy --target x86_64-unknown-linux-gnu --workspace --all-targets -- -D warnings",
+]
+
+[tasks."check:macos"]
+description = "zigbuild + clippy for aarch64-apple-darwin"
+run = [
+    "cargo zigbuild --target aarch64-apple-darwin --workspace",
+    "cargo clippy --target aarch64-apple-darwin --workspace --all-targets -- -D warnings",
+]
+
+[tasks.check]
+description = "fmt + clippy for windows, linux, and macos"
+depends = ["fmt", "check:windows", "check:linux", "check:macos"]

@@ -11,7 +11,7 @@ context_menu = ["winit_extras/context_menu"]
 menu_bar = ["winit_extras/menu_bar", "winit_extras_core/menu_bar"]
 
 [dependencies]
-winit_extras.workspace = true
+winit_extras = { workspace = true, features = ["vello_renderer"] }
 winit_extras_core.workspace = true
 winit.workspace = true
 anyhow.workspace = true
