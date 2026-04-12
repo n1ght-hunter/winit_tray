@@ -55,10 +55,7 @@ impl<T: Clone + Send + Sync + 'static> MenuRenderer<T> for VelloMenuRenderer {
         let menu =
             VelloContextMenu::new(event_loop, parent_handle, items, proxy, self.style.clone())
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ))
+                    Box::new(std::io::Error::other(e.to_string()))
                 })?;
         Ok(Box::new(menu))
     }
@@ -234,16 +231,16 @@ impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
                 ..
             } => {
                 let data = self.data.lock().unwrap();
-                if let Some(idx) = hit_test(&data.layout, position.y as u32) {
-                    if data.layout[idx].is_enabled && !data.layout[idx].is_separator {
-                        if let Some(id) = get_item_id(&data.items, idx) {
-                            let proxy = data.proxy.clone();
-                            drop(data);
-                            self.window.set_visible(false);
-                            (proxy)(Event::MenuItemClicked { id });
-                            return true;
-                        }
-                    }
+                if let Some(idx) = hit_test(&data.layout, position.y as u32)
+                    && data.layout[idx].is_enabled
+                    && !data.layout[idx].is_separator
+                    && let Some(id) = get_item_id(&data.items, idx)
+                {
+                    let proxy = data.proxy.clone();
+                    drop(data);
+                    self.window.set_visible(false);
+                    (proxy)(Event::MenuItemClicked { id });
+                    return true;
                 }
             }
             WindowEvent::Focused(false) => {
@@ -530,7 +527,9 @@ fn layout_text_simple(
 /// window handle. Falls back to returning the position unchanged if the
 /// platform doesn't support conversion.
 fn client_to_screen(
-    parent: Option<RawWindowHandle>,
+    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] parent: Option<
+        RawWindowHandle,
+    >,
     position: PhysicalPosition<i32>,
 ) -> PhysicalPosition<i32> {
     #[cfg(target_os = "windows")]

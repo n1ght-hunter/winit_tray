@@ -52,7 +52,7 @@ impl MenuBarTarget {
 
 // Retained menu bar targets to keep them alive
 thread_local! {
-    static MENU_BAR_TARGETS: RefCell<Vec<Retained<MenuBarTarget>>> = RefCell::new(Vec::new());
+    static MENU_BAR_TARGETS: RefCell<Vec<Retained<MenuBarTarget>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// macOS menu bar implementation.

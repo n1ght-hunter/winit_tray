@@ -13,13 +13,13 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-#[cfg(feature = "menu_bar")]
+#[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 use winit_extras::{MenuBarManager, MenuEntry, MenuItem};
-#[cfg(feature = "menu_bar")]
+#[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 use winit_extras_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopLevelMenu};
 
 /// Menu item identifiers using an enum for type safety.
-#[cfg(feature = "menu_bar")]
+#[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MenuAction {
     // File menu
@@ -43,28 +43,33 @@ enum MenuAction {
     Documentation,
 }
 
-#[cfg(feature = "menu_bar")]
+#[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 type MenuId = MenuAction;
 
-#[cfg(not(feature = "menu_bar"))]
+#[cfg(not(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos"))))]
+#[allow(dead_code)]
 type MenuId = ();
 
+#[allow(dead_code)]
 struct App {
     window: Option<Rc<Box<dyn Window>>>,
-    #[cfg(feature = "menu_bar")]
+    #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
     menu_bar_manager: MenuBarManager<MenuId>,
-    #[cfg(feature = "menu_bar")]
+    #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
     _menu_bar: Option<Box<dyn MenuBar>>,
     renderer: Option<GradientRenderer>,
 }
 
 impl App {
+    #[allow(dead_code)]
     fn new(event_loop: &EventLoop) -> Self {
+        #[cfg(not(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos"))))]
+        let _ = event_loop;
         App {
             window: None,
-            #[cfg(feature = "menu_bar")]
+            #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
             menu_bar_manager: MenuBarManager::new(event_loop),
-            #[cfg(feature = "menu_bar")]
+            #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
             _menu_bar: None,
             renderer: None,
         }
@@ -85,7 +90,7 @@ impl ApplicationHandler for App {
         };
 
         // Create the menu bar (when menu_bar feature is enabled)
-        #[cfg(feature = "menu_bar")]
+        #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
         {
             let menus = vec![
                 TopLevelMenu::new(
@@ -161,7 +166,9 @@ impl ApplicationHandler for App {
     }
 
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
-        #[cfg(feature = "menu_bar")]
+        #[cfg(not(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos"))))]
+        let _ = event_loop;
+        #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
         while let Ok((_id, event)) = self.menu_bar_manager.try_recv() {
             if let MenuBarEvent::MenuItemClicked { id } = event {
                 info!(?id, "menu item clicked");
@@ -218,14 +225,14 @@ impl ApplicationHandler for App {
 fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
-    #[cfg(not(feature = "menu_bar"))]
+    #[cfg(not(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos"))))]
     {
         eprintln!("This example requires the 'menu_bar' feature.");
         eprintln!("Run with: cargo run --example menu_bar --features menu_bar");
-        return Ok(());
+        Ok(())
     }
 
-    #[cfg(feature = "menu_bar")]
+    #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
     {
         let event_loop = EventLoop::new()?;
         let app = App::new(&event_loop);

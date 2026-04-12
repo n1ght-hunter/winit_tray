@@ -16,9 +16,10 @@ use winit::icon::{Icon, RgbaIcon};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use winit_extras::{Manager, MenuEntry, MenuItem, Submenu};
+#[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 use winit_extras_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopLevelMenu};
 
-#[cfg(feature = "menu_bar")]
+#[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
 use winit_extras::MenuBarManager;
 
 #[cfg(feature = "context_menu")]
@@ -48,6 +49,7 @@ enum TrayAction {
 
 /// Actions for the menu bar.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 enum MenuBarAction {
     // File menu
     New,
@@ -137,9 +139,9 @@ struct App {
     renderer: Option<GradientRenderer>,
     tray: Manager<AppAction>,
     tray_icon: Option<Box<dyn winit_extras::TrayIcon>>,
-    #[cfg(feature = "menu_bar")]
+    #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
     menu_bar_manager: MenuBarManager<MenuBarAction>,
-    #[cfg(feature = "menu_bar")]
+    #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
     _menu_bar: Option<Box<dyn MenuBar>>,
     #[cfg(feature = "context_menu")]
     context_menu: Option<Rc<dyn ContextMenu>>,
@@ -154,9 +156,9 @@ impl App {
             renderer: None,
             tray: Manager::new(event_loop),
             tray_icon: None,
-            #[cfg(feature = "menu_bar")]
+            #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
             menu_bar_manager: MenuBarManager::new(event_loop),
-            #[cfg(feature = "menu_bar")]
+            #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
             _menu_bar: None,
             #[cfg(feature = "context_menu")]
             context_menu: None,
@@ -184,7 +186,7 @@ impl App {
         ]
     }
 
-    #[cfg(feature = "menu_bar")]
+    #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
     fn build_menu_bar() -> Vec<TopLevelMenu<MenuBarAction>> {
         vec![
             TopLevelMenu::new(
@@ -413,7 +415,7 @@ impl ApplicationHandler for App {
         }
 
         // Create the menu bar
-        #[cfg(feature = "menu_bar")]
+        #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
         {
             #[cfg(target_os = "windows")]
             let menu_bar_attrs = {
@@ -534,7 +536,7 @@ impl ApplicationHandler for App {
         }
 
         // Handle menu bar events
-        #[cfg(feature = "menu_bar")]
+        #[cfg(all(feature = "menu_bar", any(target_os = "windows", target_os = "macos")))]
         while let Ok((_id, event)) = self.menu_bar_manager.try_recv() {
             if let MenuBarEvent::MenuItemClicked { id } = event {
                 info!(?id, "Menu bar item clicked");
