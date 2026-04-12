@@ -1,4 +1,6 @@
-use std::sync::{Arc, Mutex, Weak};
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
@@ -22,15 +24,42 @@ use winit_extras_windows::context_menu::NativeMenuRenderer as DefaultMenuRendere
 #[cfg(target_os = "macos")]
 use winit_extras_macos::context_menu::NativeMenuRenderer as DefaultMenuRenderer;
 
+/// Entry point for tray icons and context menus.
+///
+/// Owns the event channel, renderers, and handles to all live menus. One
+/// `Manager` handles all tray icons and context menus for the application.
+///
+/// The type parameter `T` is the user-defined action type carried by
+/// [`Event::MenuItemClicked`]. Use `()` if you don't need menus.
+///
+/// # Example
+///
+/// ```ignore
+/// let manager = Manager::new(&event_loop);
+/// let icon = manager.create_tray(TrayIconAttributes::default().with_icon(icon))?;
+///
+/// // In proxy_wake_up:
+/// while let Ok(event) = manager.try_recv() {
+///     match event {
+///         Event::PointerButton { .. } => { /* handle click */ }
+///         Event::MenuItemClicked { id } => { /* handle menu */ }
+///     }
+/// }
+/// ```
 pub struct Manager<T: Clone + Send + Sync + 'static = ()> {
+    // The EventLoopProxy is cloned into the callback, which handles all wake-ups.
+    // We keep this field so the proxy lives at least as long as the Manager, in
+    // case we ever need to trigger a wake from a manager method directly.
     _proxy: EventLoopProxy,
     receiver: std::sync::mpsc::Receiver<Event<T>>,
     callback: EventCallback<T>,
     tray_renderer: Box<dyn TrayIconRenderer<T>>,
     #[cfg(feature = "context_menu")]
     menu_renderer: Box<dyn MenuRenderer<T>>,
+    /// Weak references to all created menus, used for auto-forwarding window
+    /// events via `handle_window_event`. Dead entries are swept on each call.
     #[cfg(feature = "context_menu")]
-    menus: Mutex<Vec<Weak<dyn ContextMenu>>>,
+    menus: RefCell<Vec<Weak<dyn ContextMenu>>>,
 }
 
 impl<T: Clone + Send + Sync + 'static> std::fmt::Debug for Manager<T> {
@@ -97,7 +126,7 @@ impl<T: Clone + Send + Sync + 'static> ManagerBuilder<T> {
                 .menu_renderer
                 .unwrap_or_else(|| Box::new(DefaultMenuRenderer)),
             #[cfg(feature = "context_menu")]
-            menus: Mutex::new(Vec::new()),
+            menus: RefCell::new(Vec::new()),
         }
     }
 
@@ -118,7 +147,7 @@ impl<T: Clone + Send + Sync + 'static> ManagerBuilder<T> {
                 .menu_renderer
                 .expect("Linux requires a menu renderer (e.g. VelloMenuRenderer). Use .menu_renderer() on the builder."),
             #[cfg(feature = "context_menu")]
-            menus: Mutex::new(Vec::new()),
+            menus: RefCell::new(Vec::new()),
         }
     }
 }
@@ -151,7 +180,7 @@ impl<T: Clone + Send + Sync + 'static> Manager<T> {
 
     /// Create a context menu.
     ///
-    /// The returned `Arc` can be stored and shown later via `show()` or
+    /// The returned `Rc` can be stored and shown later via `show()` or
     /// `show_at_screen_pos()`. Window events are automatically forwarded to
     /// all live menus via `handle_window_event()`.
     #[cfg(feature = "context_menu")]
@@ -160,15 +189,15 @@ impl<T: Clone + Send + Sync + 'static> Manager<T> {
         event_loop: &dyn ActiveEventLoop,
         window: &impl HasWindowHandle,
         items: Vec<winit_extras_core::MenuEntry<T>>,
-    ) -> Result<Arc<dyn ContextMenu>, anyhow::Error> {
+    ) -> Result<Rc<dyn ContextMenu>, anyhow::Error> {
         let menu = self
             .menu_renderer
             .create_menu(event_loop, window, items, self.callback.clone())
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        let arc: Arc<dyn ContextMenu> = Arc::from(menu);
-        self.menus.lock().unwrap().push(Arc::downgrade(&arc));
-        Ok(arc)
+        let rc: Rc<dyn ContextMenu> = Rc::from(menu);
+        self.menus.borrow_mut().push(Rc::downgrade(&rc));
+        Ok(rc)
     }
 
     /// Forward a window event to all live context menus.
@@ -176,7 +205,7 @@ impl<T: Clone + Send + Sync + 'static> Manager<T> {
     /// Call this from `window_event()`. Returns `true` if any menu consumed the event.
     #[cfg(feature = "context_menu")]
     pub fn handle_window_event(&self, window_id: WindowId, event: &WindowEvent) -> bool {
-        let mut menus = self.menus.lock().unwrap();
+        let mut menus = self.menus.borrow_mut();
         // Clean up dead Weak references while iterating
         menus.retain(|weak| weak.strong_count() > 0);
 

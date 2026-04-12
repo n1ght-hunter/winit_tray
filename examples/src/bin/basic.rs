@@ -48,9 +48,11 @@ impl ApplicationHandler for App {
             }
         };
 
-        let tray_attributes = winit_extras::TrayIconAttributes::default()
-            .with_tooltip("Winit Tray Example")
-            .with_icon(icon.clone());
+        let mut tray_attributes =
+            winit_extras::TrayIconAttributes::default().with_tooltip("Winit Tray Example");
+        if let Some(icon) = icon.clone() {
+            tray_attributes = tray_attributes.with_icon(icon);
+        }
 
         self.tray = match self.tray_manager.create_tray(tray_attributes) {
             Ok(tray) => Some(tray),
@@ -79,7 +81,7 @@ impl ApplicationHandler for App {
         self.window = Some(window);
     }
 
-    fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
+    fn proxy_wake_up(&mut self, _event_loop: &dyn ActiveEventLoop) {
         while let Ok(event) = self.tray_manager.try_recv() {
             match event {
                 winit_extras::Event::PointerButton {

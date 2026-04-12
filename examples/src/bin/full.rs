@@ -22,7 +22,6 @@ use winit_extras_core::menu_bar::{MenuBar, MenuBarAttributes, MenuBarEvent, TopL
 use winit_extras::MenuBarManager;
 
 #[cfg(feature = "context_menu")]
-use std::sync::Arc;
 #[cfg(feature = "context_menu")]
 use winit_extras::context_menu::ContextMenu;
 
@@ -143,7 +142,9 @@ struct App {
     #[cfg(feature = "menu_bar")]
     _menu_bar: Option<Box<dyn MenuBar>>,
     #[cfg(feature = "context_menu")]
-    context_menu: Option<Arc<dyn ContextMenu>>,
+    context_menu: Option<Rc<dyn ContextMenu>>,
+    #[cfg(feature = "context_menu")]
+    tray_menu: Option<Rc<dyn ContextMenu>>,
 }
 
 impl App {
@@ -159,6 +160,8 @@ impl App {
             _menu_bar: None,
             #[cfg(feature = "context_menu")]
             context_menu: None,
+            #[cfg(feature = "context_menu")]
+            tray_menu: None,
         }
     }
 
@@ -369,9 +372,11 @@ impl ApplicationHandler for App {
         };
 
         // Create the system tray
-        let tray_attributes = winit_extras::TrayIconAttributes::default()
-            .with_tooltip("Full Example - Right-click for menu")
-            .with_icon(icon.clone());
+        let mut tray_attributes = winit_extras::TrayIconAttributes::default()
+            .with_tooltip("Full Example - Right-click for menu");
+        if let Some(icon) = icon.clone() {
+            tray_attributes = tray_attributes.with_icon(icon);
+        }
 
         self.tray_icon = match self.tray.create_tray(tray_attributes) {
             Ok(tray) => {
@@ -431,7 +436,7 @@ impl ApplicationHandler for App {
             }
         }
 
-        // Create the context menu
+        // Create the window context menu
         #[cfg(feature = "context_menu")]
         {
             let ctx_items: Vec<MenuEntry<AppAction>> = Self::build_context_menu()
@@ -448,6 +453,23 @@ impl ApplicationHandler for App {
                 }
                 Err(err) => {
                     error!(%err, "failed to create context menu");
+                }
+            }
+
+            let tray_items: Vec<MenuEntry<AppAction>> = Self::build_tray_menu()
+                .into_iter()
+                .map(|e| map_menu_entry(e, AppAction::Tray))
+                .collect();
+            match self
+                .tray
+                .create_menu(event_loop, window.as_ref(), tray_items)
+            {
+                Ok(menu) => {
+                    info!("Tray menu created");
+                    self.tray_menu = Some(menu);
+                }
+                Err(err) => {
+                    error!(%err, "failed to create tray menu");
                 }
             }
         }
@@ -468,6 +490,18 @@ impl ApplicationHandler for App {
         // Handle tray + context menu events (unified)
         while let Ok(event) = self.tray.try_recv() {
             match event {
+                winit_extras::Event::PointerButton {
+                    state: ElementState::Released,
+                    button: winit::event::ButtonSource::Mouse(MouseButton::Right),
+                    position,
+                    ..
+                } => {
+                    if let Some(menu) = &self.tray_menu {
+                        let pos =
+                            winit::dpi::PhysicalPosition::new(position.x as i32, position.y as i32);
+                        menu.show_at_screen_pos(pos);
+                    }
+                }
                 winit_extras::Event::PointerButton { state, button, .. } => {
                     info!(?state, ?button, "Tray icon clicked");
                 }
@@ -607,7 +641,18 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &dyn ActiveEventLoop,
+        wid: WindowId,
+        event: WindowEvent,
+    ) {
+        // Forward events to any live menus (used by vello-rendered menus).
+        #[cfg(feature = "context_menu")]
+        if self.tray.handle_window_event(wid, &event) {
+            return;
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 info!("Window close requested");

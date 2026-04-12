@@ -4,7 +4,6 @@ use std::error::Error;
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use tracing::{error, info, warn};
 use winit::application::ApplicationHandler;
@@ -42,8 +41,8 @@ struct App {
     window: Option<WindowHandle>,
     tray: Manager<Action>,
     tray_icon: Option<Box<dyn winit_extras::TrayIcon>>,
-    window_menu: Option<Arc<dyn ContextMenu>>,
-    tray_menu: Option<Arc<dyn ContextMenu>>,
+    window_menu: Option<Rc<dyn ContextMenu>>,
+    tray_menu: Option<Rc<dyn ContextMenu>>,
     surface: Option<SoftbufferSurface>,
 }
 
@@ -97,9 +96,11 @@ impl ApplicationHandler for App {
             }
         };
 
-        let tray_attributes = winit_extras::TrayIconAttributes::default()
-            .with_tooltip("Vello Context Menu Example")
-            .with_icon(icon.clone());
+        let mut tray_attributes =
+            winit_extras::TrayIconAttributes::default().with_tooltip("Vello Context Menu Example");
+        if let Some(icon) = icon.clone() {
+            tray_attributes = tray_attributes.with_icon(icon);
+        }
 
         self.tray_icon = match self.tray.create_tray(tray_attributes) {
             Ok(tray) => Some(tray),

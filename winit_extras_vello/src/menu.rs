@@ -1,8 +1,7 @@
 //! Vello-rendered context menu implementation.
 
 use std::num::NonZeroU32;
-use std::rc::Rc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rwh_06::{HasWindowHandle, RawWindowHandle};
 use skrifa::FontRef;
@@ -82,54 +81,65 @@ struct MenuData<T> {
     menu_width: u32,
     menu_height: u32,
     proxy: EventCallback<T>,
-    font_data: FontData,
 }
 
-fn load_system_font() -> FontData {
-    let try_load = |path: &str| -> Option<FontData> {
-        let data = std::fs::read(path).ok()?;
-        Some(FontData::new(data.into(), 0))
-    };
+/// Cached system UI font, loaded once on first use.
+///
+/// Reading ~1MB TTF files per menu creation was a significant overhead.
+static SYSTEM_FONT: OnceLock<FontData> = OnceLock::new();
 
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(f) = try_load("C:\\Windows\\Fonts\\segoeui.ttf") {
-            return f;
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        for path in &[
-            "/System/Library/Fonts/SFNS.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ] {
-            if let Some(f) = try_load(path) {
+/// Returns the cached system UI font, loading it from disk on first call.
+///
+/// Tries platform-specific paths in order. Returns an empty `FontData` (which
+/// renders nothing) if no font is found -- the warning is logged only once
+/// thanks to `OnceLock`.
+fn system_font() -> &'static FontData {
+    SYSTEM_FONT.get_or_init(|| {
+        let try_load = |path: &str| -> Option<FontData> {
+            let data = std::fs::read(path).ok()?;
+            Some(FontData::new(data.into(), 0))
+        };
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(f) = try_load("C:\\Windows\\Fonts\\segoeui.ttf") {
                 return f;
             }
         }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        for path in &[
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/TTF/DejaVuSans.ttf",
-            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-        ] {
-            if let Some(f) = try_load(path) {
-                return f;
+        #[cfg(target_os = "macos")]
+        {
+            for path in &[
+                "/System/Library/Fonts/SFNS.ttf",
+                "/System/Library/Fonts/Helvetica.ttc",
+            ] {
+                if let Some(f) = try_load(path) {
+                    return f;
+                }
             }
         }
-    }
+        #[cfg(target_os = "linux")]
+        {
+            for path in &[
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/TTF/DejaVuSans.ttf",
+                "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+            ] {
+                if let Some(f) = try_load(path) {
+                    return f;
+                }
+            }
+        }
 
-    tracing::warn!("could not load system font, text will not render");
-    FontData::new(Vec::new().into(), 0)
+        tracing::warn!("could not load system font; vello menu text will not render");
+        FontData::new(Vec::new().into(), 0)
+    })
 }
 
 /// A context menu rendered with vello_cpu in a popup window.
 pub struct VelloContextMenu<T> {
-    window: Rc<Box<dyn Window>>,
+    window: Arc<dyn Window>,
     parent_handle: Option<RawWindowHandle>,
-    surface: Mutex<softbuffer::Surface<Rc<Box<dyn Window>>, Rc<Box<dyn Window>>>>,
+    surface: Mutex<softbuffer::Surface<Arc<dyn Window>, Arc<dyn Window>>>,
     data: Mutex<MenuData<T>>,
     renderer: Mutex<RenderContext>,
     pixmap: Mutex<Pixmap>,
@@ -140,11 +150,6 @@ impl<T> std::fmt::Debug for VelloContextMenu<T> {
         f.debug_struct("VelloContextMenu").finish_non_exhaustive()
     }
 }
-
-// The Window is Rc (not Send), but VelloContextMenu is only used from the
-// main thread via event loop callbacks. The Mutex guards concurrent access.
-unsafe impl<T: Send> Send for VelloContextMenu<T> {}
-unsafe impl<T: Sync> Sync for VelloContextMenu<T> {}
 
 impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
     fn new(
@@ -166,8 +171,7 @@ impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
             .with_window_level(WindowLevel::AlwaysOnTop)
             .with_surface_size(PhysicalSize::new(menu_width, menu_height));
 
-        let window = event_loop.create_window(attrs)?;
-        let window = Rc::new(window);
+        let window: Arc<dyn Window> = Arc::from(event_loop.create_window(attrs)?);
 
         let context =
             softbuffer::Context::new(window.clone()).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -178,7 +182,8 @@ impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
             surface.resize(w, h).map_err(|e| anyhow::anyhow!("{e}"))?;
         }
 
-        let font_data = load_system_font();
+        // Prime the font cache on first menu creation.
+        let _ = system_font();
 
         let data = MenuData {
             items,
@@ -188,7 +193,6 @@ impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
             menu_width,
             menu_height,
             proxy,
-            font_data,
         };
 
         Ok(Self {
@@ -322,8 +326,9 @@ impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
 
                 // Render text using vello_cpu glyph_run + skrifa
                 renderer.set_paint(text_color);
+                let font = system_font();
                 let glyphs = layout_text_simple(
-                    &data.font_data,
+                    font,
                     label,
                     font_size,
                     x_offset,
@@ -331,7 +336,7 @@ impl<T: Clone + Send + Sync + 'static> VelloContextMenu<T> {
                 );
                 if !glyphs.is_empty() {
                     renderer
-                        .glyph_run(&data.font_data)
+                        .glyph_run(font)
                         .font_size(font_size)
                         .fill_glyphs(glyphs.into_iter());
                 }
@@ -417,7 +422,7 @@ fn compute_layout<T>(items: &[MenuEntry<T>], style: &MenuStyle) -> (Vec<ItemLayo
                     is_separator: false,
                     is_enabled: item.enabled,
                 });
-                max_label_len = max_label_len.max(item.label.len());
+                max_label_len = max_label_len.max(item.label.chars().count());
                 y += style.item_height;
             }
             MenuEntry::Submenu(sub) => {
@@ -427,7 +432,8 @@ fn compute_layout<T>(items: &[MenuEntry<T>], style: &MenuStyle) -> (Vec<ItemLayo
                     is_separator: false,
                     is_enabled: sub.enabled,
                 });
-                let label_with_arrow = sub.label.len() + 2;
+                // +2 leaves room for the " >" submenu arrow indicator.
+                let label_with_arrow = sub.label.chars().count() + 2;
                 max_label_len = max_label_len.max(label_with_arrow);
                 y += style.item_height;
             }
@@ -453,25 +459,25 @@ fn hit_test(layout: &[ItemLayout], y: u32) -> Option<usize> {
 }
 
 fn get_item_id<T: Clone>(items: &[MenuEntry<T>], flat_index: usize) -> Option<T> {
-    items.iter().nth(flat_index).and_then(|entry| match entry {
+    match items.get(flat_index)? {
         MenuEntry::Item(item) => Some(item.id.clone()),
         _ => None,
-    })
+    }
 }
 
 fn get_item_label<T>(items: &[MenuEntry<T>], flat_index: usize) -> Option<&str> {
-    items.iter().nth(flat_index).and_then(|entry| match entry {
+    match items.get(flat_index)? {
         MenuEntry::Item(item) => Some(item.label.as_str()),
         MenuEntry::Submenu(sub) => Some(sub.label.as_str()),
         MenuEntry::Separator => None,
-    })
+    }
 }
 
 fn get_item_checked<T>(items: &[MenuEntry<T>], flat_index: usize) -> Option<bool> {
-    items.iter().nth(flat_index).and_then(|entry| match entry {
+    match items.get(flat_index)? {
         MenuEntry::Item(item) => item.checked,
         _ => None,
-    })
+    }
 }
 
 /// Simple text layout: map characters to positioned glyphs using skrifa's charmap
