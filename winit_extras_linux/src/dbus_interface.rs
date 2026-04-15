@@ -1,6 +1,5 @@
 use crate::util::SniIcon;
 use dpi::PhysicalPosition;
-use std::sync::Arc;
 use tracing::trace;
 use winit_core::event::{ButtonSource, ElementState, MouseButton};
 use winit_extras_core::{Event, EventCallback, tray_icon_id::TrayIconId};

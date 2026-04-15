@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -44,7 +46,7 @@ impl MenuTarget {
 
 // Retained menu targets to keep them alive
 thread_local! {
-    static MENU_TARGETS: RefCell<Vec<Retained<MenuTarget>>> = RefCell::new(Vec::new());
+    static MENU_TARGETS: RefCell<Vec<Retained<MenuTarget>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Creates an NSMenu from a vector of MenuEntry items.
@@ -102,8 +104,9 @@ fn create_menu_item<T: Clone + Send + Sync + 'static>(
 
     // Store callback
     let id = item.id.clone();
+    let _ = tray_icon_id;
     let callback = Box::new(move || {
-        proxy(tray_icon_id, Event::MenuItemClicked { id: id.clone() });
+        proxy(Event::MenuItemClicked { id: id.clone() });
     });
 
     let key = &*menu_item as *const NSMenuItem as usize;

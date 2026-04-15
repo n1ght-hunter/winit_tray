@@ -13,21 +13,17 @@ pub mod menu_bar;
 use dpi::PhysicalPosition;
 use objc2::rc::Retained;
 use objc2::{define_class, msg_send, AllocAnyThread, DeclaredClass, MainThreadMarker};
-#[cfg(feature = "menu")]
-use objc2_app_kit::NSMenu;
 use objc2_app_kit::{
     NSEvent, NSStatusBar, NSStatusItem, NSTrackingArea, NSTrackingAreaOptions,
     NSVariableStatusItemLength, NSView,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::NSString;
-#[cfg(feature = "menu")]
-use std::cell::Cell;
 use tracing::trace;
 use winit_core::event::{ElementState, MouseButton};
-use winit_extras_core::{Event, EventCallback, TrayIcon as CoreTrayIcon, TrayIconAttributes};
-
-use winit_extras_core::{Event, EventCallback, TrayIconAttributes, TrayIconRenderer};
+use winit_extras_core::{
+    Event, EventCallback, TrayIcon as CoreTrayIcon, TrayIconAttributes, TrayIconRenderer,
+};
 
 use crate::util::icon_to_nsimage;
 
@@ -193,8 +189,9 @@ impl TrayTarget {
 
 // Thread-local storage for the event handler callback
 // This is necessary because we can't pass closures through Objective-C
+type TrayEventHandler = Box<dyn Fn(Event<()>) + Send + Sync>;
 thread_local! {
-    static TRAY_EVENT_HANDLER: std::cell::RefCell<Option<Box<dyn Fn(Event<()>) + Send + Sync>>> = std::cell::RefCell::new(None);
+    static TRAY_EVENT_HANDLER: std::cell::RefCell<Option<TrayEventHandler>> = const { std::cell::RefCell::new(None) };
 }
 
 impl<T: Clone + Send + Sync + 'static> Tray<T> {

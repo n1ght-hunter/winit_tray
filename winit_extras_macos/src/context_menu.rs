@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dpi::PhysicalPosition;
 use objc2::rc::Retained;

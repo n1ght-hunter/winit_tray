@@ -7,13 +7,12 @@ mod util;
 pub mod menu;
 
 use std::marker::PhantomData;
-use std::sync::Arc;
 use std::thread;
 
 use anyhow::{Context, Result, anyhow};
 use tracing::{debug, error, trace, warn};
 use winit_extras_core::{
-    Event, EventCallback, TrayIcon as CoreTrayIcon, TrayIconAttributes, TrayIconRenderer,
+    EventCallback, TrayIcon as CoreTrayIcon, TrayIconAttributes, TrayIconRenderer,
 };
 use zbus::blocking::Connection;
 
@@ -28,7 +27,7 @@ impl<T: Clone + Send + Sync + 'static> TrayIconRenderer<T> for NativeTrayIconRen
         &self,
         attributes: TrayIconAttributes,
         proxy: EventCallback<T>,
-    ) -> Result<Box<dyn CoreTray>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Box<dyn CoreTrayIcon>, Box<dyn std::error::Error + Send + Sync>> {
         let tray = Tray::new(proxy, attributes)?;
         Ok(Box::new(tray))
     }
@@ -67,9 +66,7 @@ impl<T: Clone + Send + Sync + 'static> Tray<T> {
 
         // Convert icon to SNI format
         let icon_pixmap = if let Some(icon) = &attr.icon {
-            icon_to_sni_icon(icon)
-                .map(|i| vec![i])
-                .unwrap_or_else(Vec::new)
+            icon_to_sni_icon(icon).map(|i| vec![i]).unwrap_or_default()
         } else {
             Vec::new()
         };

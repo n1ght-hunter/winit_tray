@@ -88,6 +88,19 @@ impl<T: Clone + Send + Sync + 'static> Manager<T> {
     }
 }
 
+// Linux has no native context-menu renderer, so the default here uses
+// `VelloMenuRenderer` from `winit_extras_vello`. Only available when the
+// `vello_renderer` feature is enabled.
+#[cfg(all(target_os = "linux", feature = "vello_renderer"))]
+impl<T: Clone + Send + Sync + 'static> Manager<T> {
+    /// Create a tray manager with platform-default renderers.
+    pub fn new(event_loop: &EventLoop) -> Self {
+        Self::builder(event_loop)
+            .menu_renderer(winit_extras_vello::VelloMenuRenderer::new())
+            .build()
+    }
+}
+
 /// Builder for configuring a `Manager` with custom renderers.
 pub struct ManagerBuilder<T: Clone + Send + Sync + 'static> {
     event_loop_proxy: EventLoopProxy,
